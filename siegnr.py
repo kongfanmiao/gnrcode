@@ -59,10 +59,14 @@ def adjust_axes(geom: Geometry, a0:int, ax:int, ay:int, plot_geom=True):
     #    raise ValueError('Please choose two nearest atoms as the x-axis')
     #if not (1.2*np.sqrt(3) < geom.rij(a0, ay) < 1.7*np.sqrt(3)):
     #    raise ValueError('Please choose next nearest atoms as the y axis')
-    #rx = geom.rij(a0, ax)
-    rx = 1.42
-    #ry = geom.rij(a0, ay)
-    ry = 1.42*np.sqrt(3)
+    rox = geom.rij(a0, ax)
+    roy = geom.rij(a0, ay)
+    if 1.7 < roy/rox < 1.75:
+        rx = 1.42
+        ry = 1.42*np.sqrt(3)
+    elif 1.7 < rox/roy < 1.75:
+        ry = 1.42
+        rx = 1.42*np.sqrt(3)     
     rz = np.linalg.norm(Rz)
     xyz_new = np.array([[rx, 0, 0],[0, ry, 0], [0, 0, rz]])
     trans_matrix = np.dot(np.linalg.inv(xyz), xyz_new)
@@ -77,13 +81,16 @@ def adjust_axes(geom: Geometry, a0:int, ax:int, ay:int, plot_geom=True):
 
 
 
-def set_cell(geom: Geometry, length):
+def set_cell(geom: Geometry, a, b=15, c=15):
     """
-    set the length of the unit cell vector along the ribbon direction 
+    set the length of the unit cell vector along the ribbon direction
     """   
-    
-    geom.cell[0,0] = length
-    geom.cell[1,1], geom.cell[2,2] = 30, 30
+    if isinstance(a, (list, tuple)):
+        geom.cell[0,:] = a
+    elif isinstance(a, (int, float)):
+        geom.cell[0,:] = [a, 0, 0]
+    geom.cell[1,:] = [0, b, 0]
+    geom.cell[2,:] = [0, 0, c]
     geom.set_nsc([3,1,1])
 
 
