@@ -107,7 +107,7 @@ def move_to_zcenter(g, plot_geom=True):
     return gz
 
 
-def display(g, aid=False, sc=True, rotate=False, figsize=(10, 5)):
+def display(g, aid=False, sc=True, rotate=False, figsize=(10, 5), **kwargs):
 
     xyz = g.xyz
     minxyz = np.amin(xyz, 0)
@@ -122,7 +122,7 @@ def display(g, aid=False, sc=True, rotate=False, figsize=(10, 5)):
         if round(g.cell[0, 1], 5) != 0:
             angle = np.degrees(np.arctan(g.cell[0, 1] / g.cell[0, 0]))
             g = g.rotate(-angle, [0, 0, 1])
-    plot(g, atom_indices=aid, supercell=sc)
+    plot(g, atom_indices=aid, supercell=sc, **kwargs)
     plt.axis('equal')
 
     if length[0] > length[1]:  # x is larger
@@ -131,15 +131,13 @@ def display(g, aid=False, sc=True, rotate=False, figsize=(10, 5)):
         plt.ylim(minxyz[1]-2, maxxyz[1]+2)
 
 
-
-def slice_show(g, xlim=[0,10], figsize=(8,5)):
+def slice_show(g, xlim=[0, 10], figsize=(8, 5)):
     display(g, aid=False, sc=False, figsize=figsize)
     plt.xlim(*xlim)
     for i in g:
-        if xlim[0] < g.xyz[i,0] < xlim[1]:
-            plt.annotate(i, g.xyz[i,0:2])
-        
-        
+        if xlim[0] < g.xyz[i, 0] < xlim[1]:
+            plt.annotate(i, g.xyz[i, 0:2])
+
 
 def connect(g1, g2, a1, a2, bond=[1.42, 0, 0]):
     """
@@ -193,7 +191,6 @@ def construct_hamiltonian(gnr):
 
 @timer
 def band_structure(H, Erange=[-3, 3], index=False, figsize=(6, 4), **kwargs):
-
     bs = BandStructure(H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, [
                        '$\Gamma$', '$X$', '$\Gamma$'])
 
@@ -250,8 +247,8 @@ def energy_levels(H, Erange=[-5, 5], figsize=(1, 5), index=False,
 
 
 @timer
-def dos(H, Erange=[-3, 3], figsize=(4,6), ret=False, color='k', **kwargs):
-    
+def dos(H, Erange=[-3, 3], figsize=(4, 6), ret=False, color='k', **kwargs):
+
     from functools import partial
     nsc = H.nsc
     if (nsc[0] > 1 & nsc[1] == 1 & nsc[2] == 1):
@@ -273,7 +270,6 @@ def dos(H, Erange=[-3, 3], figsize=(4,6), ret=False, color='k', **kwargs):
     plt.xlabel('DOS')
     if ret:
         return DOS
-    
 
 
 @timer
@@ -802,8 +798,8 @@ def plot_eigst_energy(H, E=0.0, Ewidth=0.1, k=None, figsize=(15, 5), dotsize=100
 
 
 @timer
-def ldos(H, location, Erange=[-3, 3], figsize=(1, 5),
-         rescale=[0, 1], color='coral', ret=False, **kwargs):
+def ldos(H, location, Erange=[-3, 3], figsize=None,
+         rescale=[0, 1], color='coral', ret=False,  **kwargs):
     """
     Plot the local density of states
     Args:
@@ -821,13 +817,17 @@ def ldos(H, location, Erange=[-3, 3], figsize=(1, 5),
     # change the scale, now from rescale[0] to rescale[1]
     ldos = ldos*(rescale[1]-rescale[0]) + rescale[0]
 
-    plt.figure(figsize=figsize)
-    for i in range(len(eig_sub)):
-        plt.hlines(eig_sub[i], 0, 1, alpha=ldos[i], color='coral', **kwargs)
-    plt.xticks([])
-    plt.ylim(Emin, Emax)
-    plt.ylabel('$E-E_F$ (eV)')
-
+    m, n = ldos.shape
+    if not figsize:
+        figsize = (1*n, 5)
+    fig, axes = plt.subplots(1, n, sharex=True, sharey=True, figsize=figsize, gridspec_kw={'wspace': 0})
+    for i in range(n):
+        for j in range(m):
+            axes[i].hlines(eig_sub[j], 0, 1, alpha=ldos[j,i], color='coral', **kwargs)
+        axes[i].set_xticks([])
+        axes[i].set_ylim(Emin, Emax)
+        axes[i].set_title(location[i])
+    axes[0].set_ylabel('$E-E_F$ (eV)')
     if ret:
         return eig_sub, ldos
 
@@ -953,7 +953,7 @@ def ssh(H, occ):
     """
     bs = BandStructure(H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, [
                        '$\Gamma$', '$X$', '$\Gamma$'])
-    
+
     occn = len(H) // 2 - 1
     print("Index of the HOMO: ", occn)
     bands = []
