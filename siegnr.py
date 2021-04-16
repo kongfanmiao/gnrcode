@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 
 def create_geometry(name, path=None,
-                    cell=[[10,0,0],[0,10,0],[0,0,10]],
+                    cell=[[10, 0, 0], [0, 10, 0], [0, 0, 10]],
                     plot_geom=True) -> Geometry:
     """
     Read coordinates from .xyz file, move the geometry center to origin
@@ -19,10 +19,10 @@ def create_geometry(name, path=None,
         file_path = "./files/" + file_name
     else:
         file_path = os.path.join(path, file_name)
-    
-    coordinates=[]
-    raw_atom=[]
-    atoms=[]
+
+    coordinates = []
+    raw_atom = []
+    atoms = []
     with open(file_path, 'r') as fin:
         for i in range(2):
             fin.readline()
@@ -34,7 +34,7 @@ def create_geometry(name, path=None,
             coordinates.append([float(i) for i in line])
     coordinates = np.array(coordinates)
     coordinates = coordinates - np.mean(coordinates, 0)
-        
+
     geom = Geometry(coordinates, atoms, cell)
     if plot_geom:
         plot(geom, atom_indices=True)
@@ -43,62 +43,49 @@ def create_geometry(name, path=None,
     return geom
 
 
-
-def adjust_axes(geom: Geometry, a0:int, ax:int, ay:int, plot_geom=True):
+def adjust_axes(geom: Geometry, ao: int, ax: int, ay: int, rx, ry, bond_length=1.42,
+                plot_geom=True):
     """
     Put the geometry in xy plane and align the one dimensional ribbon along x axis.
     """
     # give three atom indices and define the x, y axis
     if not isinstance(geom, Geometry):
         raise TypeError('Please give a Geometry object as input')
-    Rx = geom.Rij(a0, ax)
-    Ry = geom.Rij(a0, ay)
+    Rx = geom.Rij(ao, ax)
+    Ry = geom.Rij(ao, ay)
     Rz = np.cross(Rx, Ry)
     xyz = np.array([Rx, Ry, Rz])
-    #if not (1.2 < geom.rij(a0, ax) < 1.7):
-    #    raise ValueError('Please choose two nearest atoms as the x-axis')
-    #if not (1.2*np.sqrt(3) < geom.rij(a0, ay) < 1.7*np.sqrt(3)):
-    #    raise ValueError('Please choose next nearest atoms as the y axis')
-    rox = geom.rij(a0, ax)
-    roy = geom.rij(a0, ay)
-    if 1.7 < roy/rox < 1.75:
-        rx = 1.42
-        ry = 1.42*np.sqrt(3)
-    elif 1.7 < rox/roy < 1.75:
-        ry = 1.42
-        rx = 1.42*np.sqrt(3)     
     rz = np.linalg.norm(Rz)
-    xyz_new = np.array([[rx, 0, 0],[0, ry, 0], [0, 0, rz]])
+    xyz_new = np.array(
+        [[rx*bond_length, 0, 0], [0, ry*bond_length, 0], [0, 0, rz]])
     trans_matrix = np.dot(np.linalg.inv(xyz), xyz_new)
-    
+
     coords = geom.xyz
     coords_new = np.dot(coords, trans_matrix)
     geom.xyz = coords_new
-    
+
     if plot_geom:
         plot(geom, atom_indices=True)
         plt.axis('equal')
 
 
-
 def set_cell(geom: Geometry, a, b=15, c=15):
     """
     set the length of the unit cell vector along the ribbon direction
-    """   
-    if isinstance(a, (list, tuple)):
-        geom.cell[0,:] = a
+    """
+    if isinstance(a, (list, tuple, np.ndarray)):
+        geom.cell[0, :] = a
     elif isinstance(a, (int, float)):
-        geom.cell[0,:] = [a, 0, 0]
-    geom.cell[1,:] = [0, b, 0]
-    geom.cell[2,:] = [0, 0, c]
-    geom.set_nsc([3,1,1])
-
+        geom.cell[0, :] = [a, 0, 0]
+    geom.cell[1, :] = [0, b, 0]
+    geom.cell[2, :] = [0, 0, c]
+    geom.set_nsc([3, 1, 1])
 
 
 def write_coord(geom: Geometry, name, path=None):
-    # write the standardised coordinates to new xys file    
-    
-    file_name =  name + "_st.xyz"
+    # write the standardised coordinates to new xys file
+
+    file_name = name + "_st.xyz"
     if not path:
         file_path = './files/' + file_name
     else:
@@ -108,8 +95,4 @@ def write_coord(geom: Geometry, name, path=None):
         fout.write(str(len(coords)) + "\n\n")
         for i in range(len(coords)):
             fout.write("{}\t{:.10f}\t{:.10f}\t{:.10f}\n".format(
-                geom.atoms[i].symbol,*geom.xyz[i]))
-
-
-
-
+                geom.atoms[i].symbol, *geom.xyz[i]))
