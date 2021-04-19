@@ -816,18 +816,31 @@ def ldos(H, location, Erange=[-3, 3], figsize=None,
     ldos = ldos/ldos.max()  # from 0 to 1
     # change the scale, now from rescale[0] to rescale[1]
     ldos = ldos*(rescale[1]-rescale[0]) + rescale[0]
-
-    m, n = ldos.shape
+    
+    if len(ldos.shape) == 1:
+        m, n = ldos.shape[0], 1
+    else:
+        m, n = ldos.shape
     if not figsize:
         figsize = (1*n, 5)
     fig, axes = plt.subplots(1, n, sharex=True, sharey=True, figsize=figsize, gridspec_kw={'wspace': 0})
-    for i in range(n):
+    if n > 1:
+        for i in range(n):
+            ax = axes[i]
+            for j in range(m):
+                ax.hlines(eig_sub[j], 0, 1, alpha=ldos[j,i], color='coral', **kwargs)
+            ax.set_xticks([])
+            ax.set_ylim(Emin, Emax)
+            ax.set_title(location[i])
+        axes[0].set_ylabel('$E-E_F$ (eV)')
+    elif n == 1:
         for j in range(m):
-            axes[i].hlines(eig_sub[j], 0, 1, alpha=ldos[j,i], color='coral', **kwargs)
-        axes[i].set_xticks([])
-        axes[i].set_ylim(Emin, Emax)
-        axes[i].set_title(location[i])
-    axes[0].set_ylabel('$E-E_F$ (eV)')
+            ax = axes
+            ax.hlines(eig_sub[j], 0, 1, alpha=ldos[j], color='coral', **kwargs)
+            ax.set_xticks([])
+            ax.set_ylim(Emin, Emax)
+            ax.set_title(location)
+        ax.set_ylabel('$E-E_F$ (eV)')
     if ret:
         return eig_sub, ldos
 
