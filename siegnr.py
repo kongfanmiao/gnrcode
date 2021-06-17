@@ -83,7 +83,7 @@ def set_cell(geom: Geometry, a, b=15, c=15):
 
 
 def write_coord(geom: Geometry, name, path=None):
-    # write the standardised coordinates to new xys file
+    # write the standardised coordinates to new xyz file
 
     file_name = name + "_st.xyz"
     if not path:
