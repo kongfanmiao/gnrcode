@@ -190,10 +190,22 @@ def construct_hamiltonian(gnr):
 
 
 @timer
-def band_structure(H, Erange=[-3, 3], index=False, figsize=(6, 4), **kwargs):
-    bs = BandStructure(H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, [
-                       '$\Gamma$', '$X$', '$\Gamma$'])
+def band_structure(H, Erange=[-3, 3], index=False, figsize=(6, 4), tick_labels='XGX', **kwargs):
 
+    labels_dict = {
+        'G': ('$\Gamma$', [0, 0, 0]),
+        'X': ('$X$', [0.5, 0, 0]),  # always put periodic direction in x
+        'M': ('$M$', [0.5, 0.5, 0]),
+        'K': ('$K$', [2./3, 1./3, 0])
+    }
+    tkls = list(tick_labels)
+    tks = []
+    # TO DO this is problematic for time reversal symmetry broken system
+    for i, v in enumerate(tick_labels):
+        tkls[i] = labels_dict[v][0]
+        tks.append(labels_dict[v][1])
+
+    bs = BandStructure(H, tks, 400, tkls)
     bsar = bs.apply.array
     eigh = bsar.eigh()
 
@@ -211,6 +223,57 @@ def band_structure(H, Erange=[-3, 3], index=False, figsize=(6, 4), **kwargs):
             if Erange[0] < ek[-1] < Erange[1]:
                 plt.annotate(i+1, (lk[-1], ek[0]))
 
+                
+@timer
+def unfold_band(H, lat_vec, kmesh=500, ky=0, marker_size:float=None, 
+                marker_size_range=[2,10], cmap='Reds'):
+    """
+    Unfold the bandstructure
+    Only applies to 1-D structure at the moment
+    Arguments:
+        lat_vec: lattive vector of the primitive cell
+        ky: perpendicular component of the wavenumber to the periodic direction
+        kmesh: number of supercell
+        marker_size: if not provide, then marker size use normalized weight, if provide,
+            then use the provided value.
+        cmap: color map
+    """
+    N = len(H)
+    xyz = H.geometry.xyz
+    # band lines scale
+    bdlscale = np.pi/lat_vec
+    G = H.rcell[0,0]
+    for red_k in np.linspace(-1, 1, kmesh):
+        k = red_k*bdlscale
+        k_vec = np.array([k, ky, 0])
+        red_K = k/G
+        if red_K > 0:
+            red_K = red_K - np.floor(red_K)
+        else:
+            red_K = red_K - np.ceil(red_K)
+        red_K_vec = np.array([red_K, 0, 0])
+        # k vectors use reduced one here
+        eigh = H.eigh(k=red_K_vec)
+        eigenstate = H.eigenstate(k=red_K_vec).state
+        phase_left = np.exp(xyz.dot(k_vec)*1j)
+        phase_right = np.exp(xyz.dot(k_vec)*(-1j))
+        phase = np.outer(phase_left, phase_right)
+        weight = (1/N)*np.conj(eigenstate).dot(phase).dot(eigenstate.T)
+        weight = np.abs(weight).diagonal()
+        weight = weight/weight.max()
+        weight = weight
+        kpts = np.repeat(k, N)
+        if not marker_size:
+            smin, smax = marker_size_range
+            msize = weight*(smax-smin)+smin
+        else:
+            msize = marker_size
+        plt.scatter(kpts, eigh, s=msize,
+                    c=weight, cmap=cmap)
+        plt.ylabel('$E-E_F (eV)$')
+        plt.xlabel('wavenumber')
+    
+    
 
 @timer
 def band_gap(H):
@@ -272,85 +335,81 @@ def dos(H, Erange=[-3, 3], figsize=(4, 6), ret=False, color='k', **kwargs):
         return DOS
 
 
+def get_atom_list(geom):
+    aidx_dict = {}
+    for ia, a, isp in geom.iter_species():
+        if a.symbol not in aidx_dict.keys():
+            aidx_dict[a.symbol] = []
+        aidx_dict[a.symbol].append(geom.a2o(ia))
+    return aidx_dict
+
+
+def get_orb_list(geom):
+    aidx_dict = get_atom_list(geom)
+    oidx_dict = {}
+    idx_dict = {}
+    orb_list = ['s', 'pxy', 'pz', 'd', 'f']
+    for atom in geom.atoms.atom:
+        a = atom.symbol
+        oidx_dict[a] = dict(zip(orb_list, [[], [], [], [], []]))
+        idx_dict[a] = dict(zip(orb_list, [[], [], [], [], []]))
+        for i, orb in enumerate(atom):
+            if orb.l == 0:
+                oidx_dict[a]['s'].append(i)
+            elif orb.l == 1 and (orb.m in [-1, 1]):
+                oidx_dict[a]['pxy'].append(i)
+            elif orb.l == 1 and orb.m == 0:
+                oidx_dict[a]['pz'].append(i)
+            elif orb.l == 2:
+                oidx_dict[a]['d'].append(i)
+            elif orb.l == 3:
+                oidx_dict[a]['f'].append(i)
+        for orb in orb_list:
+            all_idx = np.add.outer(aidx_dict[a], oidx_dict[a][orb]).ravel()
+            idx_dict[a][orb] = all_idx
+    return idx_dict
+
+
 @timer
-def pdos(H, Erange=(-20, 20), figsize=(6, 4)):
+def pdos(H, Erange=(-10, 10), figsize=(4, 6), projected_orbitals=['s', 'pxy', 'pz']):
     """
     Projected density of states
-    Here we consider s, px, py, pz, d orbitals of C, and s, px, py, pz orbitals of H
+    by default plot selected projected orbitals for all the atom species
     """
-
+    geom = H.geometry
     bs = BandStructure(H, [[0, 0, 0], [1, 0, 0]],
                        400, ['$\Gamma$', '$\Gamma$'])
     bsav = bs.apply.average
 
-    C_atoms = []
-    H_atoms = []
-    for i, at in enumerate(H.atoms):
-        if at.Z == 6:
-            C_atoms.append(i)
-        elif at.Z == 1:
-            H_atoms.append(i)
-
-    idx_s = []
-    idx_pxy = []
-    idx_pz = []
-    idx_d = []
-    for i, orb in enumerate(H.geometry.atoms[C_atoms[0]]):
-        if orb.l == 0:
-            idx_s.append(i)
-        elif orb.l == 1 and (orb.m in [-1, 1]):
-            idx_pxy.append(i)
-        elif orb.l == 1 and orb.m == 0:
-            idx_pz.append(i)
-        elif orb.l == 2:
-            idx_d.append(i)
-
-    idx_hs = []
-    idx_hpz = []
-    idx_hpxy = []
-    for i, orb in enumerate(H.geometry.atoms[H_atoms[0]]):
-        if orb.l == 1 and orb.m == 0:
-            idx_hpz.append(i)
-        elif orb.l == 1 and (orb.m in [-1, 1]):
-            idx_hpxy.append(i)
-        elif orb.l == 0:
-            idx_hs.append(i)
-
-    all_s = np.add.outer(H.geometry.a2o(C_atoms), idx_s).ravel()
-    all_pxy = np.add.outer(H.geometry.a2o(C_atoms), idx_pxy).ravel()
-    all_pz = np.add.outer(H.geometry.a2o(C_atoms), idx_pz).ravel()
-    all_d = np.add.outer(H.geometry.a2o(C_atoms), idx_d).ravel()
-    all_hs = np.add.outer(H.geometry.a2o(H_atoms), idx_hs).ravel()
-    all_hpxy = np.add.outer(H.geometry.a2o(H_atoms), idx_hpxy).ravel()
-    all_hpz = np.add.outer(H.geometry.a2o(H_atoms), idx_hpz).ravel()
+    orb_idx_dict = get_orb_list(geom)
+    pdos_dict = {}
 
     def wrap(PDOS):
-        pdos_s = PDOS[all_s, :].sum(0)
-        pdos_pxy = PDOS[all_pxy, :].sum(0)
-        pdos_pz = PDOS[all_pz, :].sum(0)
-        pdos_d = PDOS[all_d, :].sum(0)
-        pdos_hs = PDOS[all_hs, :].sum(0)
-        pdos_hpxy = PDOS[all_hpxy, :].sum(0)
-        pdos_hpz = PDOS[all_hpz, :].sum(0)
-        return np.stack((pdos_s,
-                         pdos_pxy, pdos_pz,
-                         pdos_d, pdos_hs,
-                         pdos_hpxy, pdos_hpz))
+        nonlocal pdos_dict
+        i = 0
+        for a, all_idx in orb_idx_dict.items():
+            for orb in projected_orbitals:
+                pdos = PDOS[all_idx[orb], :].sum(0)
+                if orb == 'pxy':
+                    label = f'{a}: $p_x+p_y$'
+                elif orb == 'pz':
+                    label = f'{a}: $p_z$'
+                else:
+                    label = f'{a}: ${orb}$'
+                if pdos.size != 0:  # if it's not empty
+                    pdos_dict.update({i: [label, pdos]})
+                    i += 1
+        return np.stack([v[1] for v in pdos_dict.values()])
 
     E = np.linspace(Erange[0], Erange[-1], 500)
     pDOS = bsav.PDOS(E, wrap=wrap)
     plt.figure(figsize=figsize)
-    plt.plot(E, pDOS[0, :], color='C0', label='C: $s$')
-    plt.plot(E, pDOS[1, :], color='C1', label='C: $p_x+p_y$')
-    plt.plot(E, pDOS[2, :], color='C2', label='C: $p_z$')
-    plt.plot(E, pDOS[3, :], color='C3', label='C: $d$')
-    plt.plot(E, pDOS[4, :], color='C4', label='H: $hs$')
-    plt.plot(E, pDOS[5, :], color='C5', label='H: $hp_x + hp_y$')
-    plt.plot(E, pDOS[6, :], color='C6', label='H: $hp_z$')
-    plt.xlim(E[0], E[-1])
-    plt.ylim(0, None)
-    plt.xlabel(r'$E - E_F$ [eV]')
-    plt.ylabel(r'DOS [1/eV]')
+    for i in range(pDOS.shape[0]):
+        plt.plot(pDOS[i, :], E, color=f'C{i}', label=pdos_dict[i][0])
+    plt.ylim(E[0], E[-1])
+    plt.xlim(0, None)
+    plt.ylabel('$E - E_F$ [eV]')
+    plt.xlabel('DOS [1/eV]')
     plt.legend(bbox_to_anchor=[1.1, 0.9])
 
 
@@ -425,333 +484,332 @@ def pzweight(H, Erange=[-10, 0]):
         plt.annotate(idx, (pzidx[i], pzwt[i]))
 
 
+def convert_formated_str_to_dict(s: str):
+    """
+    Convert the string of the following format to dictionary:
+    Eg:
+        Input: 'C: pz; N: pxy'
+        Output: {'C': ['pz'],
+                 'N': ['pxy']}
+    """
+    sl = s.split(';')
+    d = {}
+    for i in sl:
+        k, v = i.split(':')
+        key, v = k.strip(), v.strip()
+        v = v.split(',')
+        value = [i.strip() for i in v]
+        d[key] = value
+    return d
+
+
 @timer
-def fat_bands(H, Erange=(-20, 20), figsize=(10, 8)):
+def fat_bands(H, Erange=(-20, 20), figsize=(10, 8),
+              projected_atoms='all',
+              projected_orbitals=['s', 'pxy', 'pz'],
+              specify_atoms_and_orbitals=None,
+              index=False,
+              alpha=0.75):
     """
     Plot the fat bands, showing the weight of each kinds of orbital of every band.
+    specify_atoms_and_orbitals should follow the following format:
+        'C: pz; N: pxy'
+    If the specify_atosm_and_orbitals argument is not None, then it will overwrite 
+    the projected_atoms and projected_orbitals arguments.
+    If not, the projected orbitals will be all the orbitals in projected_orbitals of
+    each atoms in projected_atoms.
     """
+    geom = H.geometry
+    orb_idx_dict = get_orb_list(geom)
+    # initialize the weight dictionary
+    wt_dict = {}
+    for a, orbs in orb_idx_dict.items():
+        wt_dict[a] = {}
+        for orb in orbs.keys():
+            wt_dict[a][orb] = []
 
-    C_atoms = []
-    H_atoms = []
-    for i, at in enumerate(H.atoms):
-        if at.Z == 6:
-            C_atoms.append(i)
-        elif at.Z == 1:
-            H_atoms.append(i)
-
-    idx_s = []
-    idx_pxy = []
-    idx_pz = []
-    idx_d = []
-    for i, orb in enumerate(H.geometry.atoms[C_atoms[0]]):
-        if orb.l == 0:
-            idx_s.append(i)
-        elif orb.l == 1 and (orb.m in [-1, 1]):
-            idx_pxy.append(i)
-        elif orb.l == 1 and orb.m == 0:
-            idx_pz.append(i)
-        elif orb.l == 2:
-            idx_d.append(i)
-
-    idx_hs = []
-    idx_hpz = []
-    idx_hpxy = []
-    for i, orb in enumerate(H.geometry.atoms[H_atoms[0]]):
-        if orb.l == 1 and orb.m == 0:
-            idx_hpz.append(i)
-        elif orb.l == 1 and (orb.m in [-1, 1]):
-            idx_hpxy.append(i)
-        elif orb.l == 0:
-            idx_hs.append(i)
-
-    all_s = np.add.outer(H.geometry.a2o(C_atoms), idx_s).ravel()
-    all_pxy = np.add.outer(H.geometry.a2o(C_atoms), idx_pxy).ravel()
-    all_pz = np.add.outer(H.geometry.a2o(C_atoms), idx_pz).ravel()
-    all_d = np.add.outer(H.geometry.a2o(C_atoms), idx_d).ravel()
-    all_hs = np.add.outer(H.geometry.a2o(H_atoms), idx_hs).ravel()
-    all_hpxy = np.add.outer(H.geometry.a2o(H_atoms), idx_hpxy).ravel()
-    all_hpz = np.add.outer(H.geometry.a2o(H_atoms), idx_hpz).ravel()
-
-    weight_s = []
-    weight_pxy = []
-    weight_pz = []
-    weight_d = []
-    weight_hs = []
-    weight_hpxy = []
-    weight_hpz = []
+    # Generate the atoms and corresponding orbitals that you want to project on
+    if not specify_atoms_and_orbitals:
+        if projected_atoms == 'all':
+            proj_atoms = list(orb_idx_dict.keys())
+        elif isinstance(projected_atoms, (list, tuple)):
+            proj_atoms = projected_atoms
+        if projected_orbitals == 'all':
+            proj_orbs = ['s', 'pxy', 'pz', 'd', 'f']
+        elif isinstance(projected_orbitals, (list, tuple)):
+            proj_orbs = projected_orbitals
+        proj_ats_orbs = dict(zip(proj_atoms,
+                                 [proj_orbs]*len(proj_atoms)))
+    else:
+        proj_ats_orbs = convert_formated_str_to_dict(specify_atoms_and_orbitals)
+    print(proj_ats_orbs)
 
     def wrap_fat_bands(eigenstate):
         """
         <psi_{i,v}|S(k)|psi_i>
+        return the eigenvalue for a specify eigenstat and calculate
+        the weight for each orbitals.
         """
+        nonlocal wt_dict
         norm2 = eigenstate.norm2(sum=False)
-        weight_s.append(norm2[:, all_s].sum(-1))
-        weight_pxy.append(norm2[:, all_pxy].sum(-1))
-        weight_pz.append(norm2[:, all_pz].sum(-1))
-        weight_d.append(norm2[:, all_d].sum(-1))
-        weight_hs.append(norm2[:, all_hs].sum(-1))
-        weight_hpxy.append(norm2[:, all_hpxy].sum(-1))
-        weight_hpz.append(norm2[:, all_hpz].sum(-1))
+        for a, orbs in orb_idx_dict.items():
+            for orb, indices in orbs.items():
+                if len(indices) != 0:
+                    wt_k = norm2[:, indices].sum(-1)
+                    wt_dict[a][orb].append(wt_k)
         return eigenstate.eig
 
-    bs = BandStructure(H, [[0, 0, 0], [1, 0, 0]],
-                       400, ['$\Gamma$', '$\Gamma$'])
+    bs = BandStructure(H, [[-0.5, 0, 0], [0, 0, 0], [0.5, 0, 0]],
+                       400, ['$X$', '$\Gamma$', '$X$'])
     bsar = bs.apply.array
     eig = bsar.eigenstate(wrap=wrap_fat_bands).T
-
+    # after transposition, k is as column, e is as row, consistent with eig
+    for value in wt_dict.values():
+        for k in value.keys():
+            value[k] = np.array(value[k]).T
     linear_k, k_tick, k_label = bs.lineark(True)
-
     Emin, Emax = Erange
     dE = (Emax - Emin)/(figsize[1]*5)
-
-    weight_s = np.array(weight_s).T
-    weight_pxy = np.array(weight_pxy).T
-    weight_pz = np.array(weight_pz).T
-    weight_d = np.array(weight_d).T
-    weight_hs = np.array(weight_hs).T
-    weight_hpxy = np.array(weight_hpxy).T
-    weight_hpz = np.array(weight_hpz).T
-
     plt.figure(figsize=figsize)
     plt.ylabel('$E-E_F$ [eV]')
     plt.xlim(linear_k[0], linear_k[-1])
     plt.xticks(k_tick, k_label)
     plt.ylim(Emin, Emax)
 
+    legend_dict = {}
     for i, e in enumerate(eig):
-        s = np.abs(weight_s[i, :] * dE)
-        pxy = np.abs(weight_pxy[i, :] * dE)
-        pz = np.abs(weight_pz[i, :] * dE)
-        d = np.abs(weight_d[i, :] * dE)
-        hs = np.abs(weight_hs[i, :] * dE)
-        hpxy = np.abs(weight_hpxy[i, :] * dE)
-        hpz = np.abs(weight_hpz[i, :] * dE)
-        plt.plot(linear_k, e, color='k')
-        # Full fat-band
-        plt.fill_between(linear_k, e-dE, e+dE, color='k', alpha=0.1)
-        # s
-        plt.fill_between(linear_k, e-(s), e+(s), color='C0', alpha=0.5)
-        # pxy
-        plt.fill_between(linear_k, e+(s), e+(s+pxy), color='C1', alpha=0.5)
-        plt.fill_between(linear_k, e-(s+pxy), e-(s), color='C1', alpha=0.5)
-        # pz
-        plt.fill_between(linear_k, e+(s+pxy), e +
-                         (s+pxy+pz), color='C2', alpha=0.5)
-        plt.fill_between(linear_k, e-(s+pxy+pz), e -
-                         (s+pxy), color='C2', alpha=0.5)
-        # d
-        plt.fill_between(linear_k, e+(s+pxy+pz), e +
-                         (s+pxy+pz+d), color='C3', alpha=0.5)
-        plt.fill_between(linear_k, e-(s+pxy+pz+d), e -
-                         (s+pxy+pz), color='C3', alpha=0.5)
-        # hs
-        plt.fill_between(linear_k, e+(s+pxy+pz+d), e +
-                         (s+pxy+pz+d+hs), color='C4', alpha=0.5)
-        plt.fill_between(linear_k, e-(s+pxy+pz+d+hs), e -
-                         (s+pxy+pz+d), color='C4', alpha=0.5)
-        # hpxy
-        plt.fill_between(linear_k, e+(s+pxy+pz+d+hs), e +
-                         (s+pxy+pz+d+hs+hpxy), color='C5', alpha=0.5)
-        plt.fill_between(linear_k, e-(s+pxy+pz+d+hs+hpxy), e -
-                         (s+pxy+pz+d+hs), color='C5', alpha=0.5)
-        # hpz
-        plt.fill_between(linear_k, e+(s+pxy+pz+d+hs+hpxy), e +
-                         (s+pxy+pz+d+hs+hpxy+hpz), color='C6', alpha=0.5)
-        plt.fill_between(linear_k, e-(s+pxy+pz+d+hs+hpxy+hpz),
-                         e-(s+pxy+pz+d+hs+hpxy), color='C6', alpha=0.5)
+        if np.any(np.logical_and(e < Emax, e > Emin)):
+            t = 0
+            filled_range = np.array([e, e])
+            plt.plot(linear_k, e, color='k')
+            if index:
+                plt.annotate(i+1, (linear_k[-1], e[-1]))
+            # plt.fill_between(linear_k, e-dE, e+dE, color='k', alpha=0.4)
+
+            # To ensure the color sequence are the same for the same geometry
+            # no matter what projected atoms and orbitals you choose, always
+            # iterate all the atoms and all the orbitals. Change their transparency 
+            # based on whether you want to see it or not
+            for a, orbs in wt_dict.items():
+                for orb, wt in orbs.items():
+                    if wt.size != 0:
+                        try:
+                            # make sure the orbital of this atom is meant to
+                            # be projected
+                            assert orb in proj_ats_orbs[a]
+                            # if yes, plot it, alpha is not zero
+                            alp = alpha
+                            # and define the legend patch
+                            if orb == 'pxy':
+                                label = f'{a}: $p_x+p_y$'
+                            elif orb == 'pz':
+                                label = f'{a}: $p_z$'
+                            else:
+                                label = f'{a}: ${orb}$'
+                            legend_dict[t] = label
+                        except:
+                            # if not, it will be totally transparent
+                            alp = 0
+                        weight = np.abs(wt[i, :]*dE)
+                        plt.fill_between(
+                            linear_k, filled_range[0]-weight,
+                            filled_range[0], color=f'C{t}', alpha=alp)
+                        plt.fill_between(
+                            linear_k, filled_range[1],
+                            filled_range[1]+weight, color=f'C{t}', alpha=alp)
+                        # update the already filled range
+                        filled_range = filled_range + \
+                            np.array([-weight, weight])
+                        t += 1
 
     from matplotlib.patches import Patch
-    legend_elements = [Patch(facecolor='C0', label='C: $s$'),
-                       Patch(facecolor='C1', label='C: $p_x+p_y$'),
-                       Patch(facecolor='C2', label='C: $p_z$'),
-                       Patch(facecolor='C3', label='C: $d$'),
-                       Patch(facecolor='C4', label='H: $hs$'),
-                       Patch(facecolor='C5', label='H: $hp_x + hp_y$'),
-                       Patch(facecolor='C6', label='H: $hp_z$')]
+
+    legend_elements = [Patch(facecolor=f'C{t}', label=label)
+                       for t, label in legend_dict.items()]
     plt.legend(handles=legend_elements, bbox_to_anchor=[1.1, 0.9])
 
 
-@timer
-def fat_bands_pz(H, Erange=(-10, 0), index=False, figsize=(10, 8)):
-    """
-    Plot the fat bands, showing the weight of each kinds of orbital of every band.
-    """
+# @timer
+# def fat_bands_pz(H, Erange=(-10, 0), index=False, figsize=(10, 8)):
+#     """
+#     Plot the fat bands, showing the weight of each kinds of orbital of every band.
+#     """
 
-    C_atoms = []
-    H_atoms = []
-    for i, at in enumerate(H.atoms):
-        if at.Z == 6:
-            C_atoms.append(i)
-        elif at.Z == 1:
-            H_atoms.append(i)
+#     C_atoms = []
+#     H_atoms = []
+#     for i, at in enumerate(H.atoms):
+#         if at.Z == 6:
+#             C_atoms.append(i)
+#         elif at.Z == 1:
+#             H_atoms.append(i)
 
-    idx_s = []
-    idx_pxy = []
-    idx_pz = []
-    idx_d = []
-    for i, orb in enumerate(H.geometry.atoms[C_atoms[0]]):
-        if orb.l == 0:
-            idx_s.append(i)
-        elif orb.l == 1 and (orb.m in [-1, 1]):
-            idx_pxy.append(i)
-        elif orb.l == 1 and orb.m == 0:
-            idx_pz.append(i)
-        elif orb.l == 2:
-            idx_d.append(i)
+#     idx_s = []
+#     idx_pxy = []
+#     idx_pz = []
+#     idx_d = []
+#     for i, orb in enumerate(H.geometry.atoms[C_atoms[0]]):
+#         if orb.l == 0:
+#             idx_s.append(i)
+#         elif orb.l == 1 and (orb.m in [-1, 1]):
+#             idx_pxy.append(i)
+#         elif orb.l == 1 and orb.m == 0:
+#             idx_pz.append(i)
+#         elif orb.l == 2:
+#             idx_d.append(i)
 
-    idx_hs = []
-    idx_hpz = []
-    idx_hpxy = []
-    for i, orb in enumerate(H.geometry.atoms[H_atoms[0]]):
-        if orb.l == 1 and orb.m == 0:
-            idx_hpz.append(i)
-        elif orb.l == 1 and (orb.m in [-1, 1]):
-            idx_hpxy.append(i)
-        elif orb.l == 0:
-            idx_hs.append(i)
+#     idx_hs = []
+#     idx_hpz = []
+#     idx_hpxy = []
+#     for i, orb in enumerate(H.geometry.atoms[H_atoms[0]]):
+#         if orb.l == 1 and orb.m == 0:
+#             idx_hpz.append(i)
+#         elif orb.l == 1 and (orb.m in [-1, 1]):
+#             idx_hpxy.append(i)
+#         elif orb.l == 0:
+#             idx_hs.append(i)
 
-    all_s = np.add.outer(H.geometry.a2o(C_atoms), idx_s).ravel()
-    all_pxy = np.add.outer(H.geometry.a2o(C_atoms), idx_pxy).ravel()
-    all_pz = np.add.outer(H.geometry.a2o(C_atoms), idx_pz).ravel()
-    all_d = np.add.outer(H.geometry.a2o(C_atoms), idx_d).ravel()
-    all_hs = np.add.outer(H.geometry.a2o(H_atoms), idx_hs).ravel()
-    all_hpxy = np.add.outer(H.geometry.a2o(H_atoms), idx_hpxy).ravel()
-    all_hpz = np.add.outer(H.geometry.a2o(H_atoms), idx_hpz).ravel()
+#     all_s = np.add.outer(H.geometry.a2o(C_atoms), idx_s).ravel()
+#     all_pxy = np.add.outer(H.geometry.a2o(C_atoms), idx_pxy).ravel()
+#     all_pz = np.add.outer(H.geometry.a2o(C_atoms), idx_pz).ravel()
+#     all_d = np.add.outer(H.geometry.a2o(C_atoms), idx_d).ravel()
+#     all_hs = np.add.outer(H.geometry.a2o(H_atoms), idx_hs).ravel()
+#     all_hpxy = np.add.outer(H.geometry.a2o(H_atoms), idx_hpxy).ravel()
+#     all_hpz = np.add.outer(H.geometry.a2o(H_atoms), idx_hpz).ravel()
 
-    weight_s = []
-    weight_pxy = []
-    weight_pz = []
-    weight_d = []
-    weight_hs = []
-    weight_hpxy = []
-    weight_hpz = []
+#     weight_s = []
+#     weight_pxy = []
+#     weight_pz = []
+#     weight_d = []
+#     weight_hs = []
+#     weight_hpxy = []
+#     weight_hpz = []
 
-    def wrap_fat_bands(eigenstate):
-        """
-        <psi_{i,v}|S(k)|psi_i>
-        """
-        norm2 = eigenstate.norm2(sum=False)
-        weight_s.append(norm2[:, all_s].sum(-1))
-        weight_pxy.append(norm2[:, all_pxy].sum(-1))
-        weight_pz.append(norm2[:, all_pz].sum(-1))
-        weight_d.append(norm2[:, all_d].sum(-1))
-        weight_hs.append(norm2[:, all_hs].sum(-1))
-        weight_hpxy.append(norm2[:, all_hpxy].sum(-1))
-        weight_hpz.append(norm2[:, all_hpz].sum(-1))
-        return eigenstate.eig
+#     def wrap_fat_bands(eigenstate):
+#         """
+#         <psi_{i,v}|S(k)|psi_i>
+#         """
+#         norm2 = eigenstate.norm2(sum=False)
+#         weight_s.append(norm2[:, all_s].sum(-1))
+#         weight_pxy.append(norm2[:, all_pxy].sum(-1))
+#         weight_pz.append(norm2[:, all_pz].sum(-1))
+#         weight_d.append(norm2[:, all_d].sum(-1))
+#         weight_hs.append(norm2[:, all_hs].sum(-1))
+#         weight_hpxy.append(norm2[:, all_hpxy].sum(-1))
+#         weight_hpz.append(norm2[:, all_hpz].sum(-1))
+#         return eigenstate.eig
 
-    kpoints = 400
-    bs = BandStructure(H, [[0, 0, 0], [1, 0, 0]],
-                       kpoints, ['$\Gamma$', '$\Gamma$'])
-    bsar = bs.apply.array
-    eig = bsar.eigenstate(wrap=wrap_fat_bands).T
+#     kpoints = 400
+#     bs = BandStructure(H, [[0, 0, 0], [1, 0, 0]],
+#                        kpoints, ['$\Gamma$', '$\Gamma$'])
+#     bsar = bs.apply.array
+#     eig = bsar.eigenstate(wrap=wrap_fat_bands).T
 
-    linear_k, k_tick, k_label = bs.lineark(True)
+#     linear_k, k_tick, k_label = bs.lineark(True)
 
-    Emin, Emax = Erange
-    dE = (Emax - Emin)/(figsize[1]*5)
+#     Emin, Emax = Erange
+#     dE = (Emax - Emin)/(figsize[1]*5)
 
-    weight_s = np.array(weight_s).T
-    weight_pxy = np.array(weight_pxy).T
-    weight_pz = np.array(weight_pz).T
-    weight_d = np.array(weight_d).T
-    weight_hs = np.array(weight_hs).T
-    weight_hpxy = np.array(weight_hpxy).T
-    weight_hpz = np.array(weight_hpz).T
+#     weight_s = np.array(weight_s).T
+#     weight_pxy = np.array(weight_pxy).T
+#     weight_pz = np.array(weight_pz).T
+#     weight_d = np.array(weight_d).T
+#     weight_hs = np.array(weight_hs).T
+#     weight_hpxy = np.array(weight_hpxy).T
+#     weight_hpz = np.array(weight_hpz).T
 
-    plt.figure(figsize=figsize)
-    plt.ylabel('$E-E_F$ [eV]')
-    plt.xlim(linear_k[0], linear_k[-1])
-    plt.xticks(k_tick, k_label)
-    plt.ylim(Emin, Emax)
+#     plt.figure(figsize=figsize)
+#     plt.ylabel('$E-E_F$ [eV]')
+#     plt.xlim(linear_k[0], linear_k[-1])
+#     plt.xticks(k_tick, k_label)
+#     plt.ylim(Emin, Emax)
 
-    fatpzk = 0
-    for i, e_all_k in enumerate(eig):
-        s_abs = np.abs(weight_s[i, :] * dE)
-        pxy_abs = np.abs(weight_pxy[i, :] * dE)
-        pz_abs = np.abs(weight_pz[i, :] * dE)
-        d_abs = np.abs(weight_d[i, :] * dE)
-        hs_abs = np.abs(weight_hs[i, :] * dE)
-        hpxy_abs = np.abs(weight_hpxy[i, :] * dE)
-        hpz_abs = np.abs(weight_hpz[i, :] * dE)
-        plt.plot(linear_k, e_all_k, color='k')
-        if index:
-            if Erange[0] < e_all_k[-1] < Erange[1]:
-                plt.annotate(i+1, (linear_k[-1], e_all_k[-1]))
+#     fatpzk = 0
+#     for i, e_all_k in enumerate(eig):
+#         s_abs = np.abs(weight_s[i, :] * dE)
+#         pxy_abs = np.abs(weight_pxy[i, :] * dE)
+#         pz_abs = np.abs(weight_pz[i, :] * dE)
+#         d_abs = np.abs(weight_d[i, :] * dE)
+#         hs_abs = np.abs(weight_hs[i, :] * dE)
+#         hpxy_abs = np.abs(weight_hpxy[i, :] * dE)
+#         hpz_abs = np.abs(weight_hpz[i, :] * dE)
+#         plt.plot(linear_k, e_all_k, color='k')
+#         if index:
+#             if Erange[0] < e_all_k[-1] < Erange[1]:
+#                 plt.annotate(i+1, (linear_k[-1], e_all_k[-1]))
 
-        if np.any(pz_abs/dE > 0.5):
-            # select k-points where pz makes major contribution
-            where_pz = np.where(pz_abs/dE > 0.5)[0]
-            if where_pz.size:
-                fatpzk += len(where_pz)
+#         if np.any(pz_abs/dE > 0.5):
+#             # select k-points where pz makes major contribution
+#             where_pz = np.where(pz_abs/dE > 0.5)[0]
+#             if where_pz.size:
+#                 fatpzk += len(where_pz)
 
-            # split the k-points array into seperate segments
-            klist = []  # list of k-segments
-            kseg = []  # k-segments
-            for i in range(len(where_pz)):
-                if where_pz[i] - where_pz[i-1] > 1:
-                    klist.append(kseg)
-                    kseg = []
-                kseg.append(where_pz[i])
-            klist.append(kseg)
+#             # split the k-points array into seperate segments
+#             klist = []  # list of k-segments
+#             kseg = []  # k-segments
+#             for i in range(len(where_pz)):
+#                 if where_pz[i] - where_pz[i-1] > 1:
+#                     klist.append(kseg)
+#                     kseg = []
+#                 kseg.append(where_pz[i])
+#             klist.append(kseg)
 
-            for i in range(len(klist)):
-                k_pz = linear_k[klist[i]]
-                e = e_all_k[klist[i]]
-                s = s_abs[klist[i]]
-                pxy = pxy_abs[klist[i]]
-                pz = pz_abs[klist[i]]
-                d = d_abs[klist[i]]
-                hs = hs_abs[klist[i]]
-                hpxy = hpxy_abs[klist[i]]
-                hpz = hpz_abs[klist[i]]
+#             for i in range(len(klist)):
+#                 k_pz = linear_k[klist[i]]
+#                 e = e_all_k[klist[i]]
+#                 s = s_abs[klist[i]]
+#                 pxy = pxy_abs[klist[i]]
+#                 pz = pz_abs[klist[i]]
+#                 d = d_abs[klist[i]]
+#                 hs = hs_abs[klist[i]]
+#                 hpxy = hpxy_abs[klist[i]]
+#                 hpz = hpz_abs[klist[i]]
 
-                # Full fat-band
-                plt.fill_between(k_pz, e-dE, e+dE, color='k', alpha=0.1)
-                # s
-                plt.fill_between(k_pz, e-(s), e+(s), color='C0', alpha=0.5)
-                # pxy
-                plt.fill_between(k_pz, e+(s), e+(s+pxy), color='C1', alpha=0.5)
-                plt.fill_between(k_pz, e-(s+pxy), e-(s), color='C1', alpha=0.5)
-                # pz
-                plt.fill_between(k_pz, e+(s+pxy), e+(s+pxy+pz),
-                                 color='C2', alpha=0.5)
-                plt.fill_between(k_pz, e-(s+pxy+pz), e -
-                                 (s+pxy), color='C2', alpha=0.5)
-                # d
-                plt.fill_between(k_pz, e+(s+pxy+pz), e +
-                                 (s+pxy+pz+d), color='C3', alpha=0.5)
-                plt.fill_between(k_pz, e-(s+pxy+pz+d), e -
-                                 (s+pxy+pz), color='C3', alpha=0.5)
-                # hs
-                plt.fill_between(k_pz, e+(s+pxy+pz+d), e +
-                                 (s+pxy+pz+d+hs), color='C4', alpha=0.5)
-                plt.fill_between(k_pz, e-(s+pxy+pz+d+hs), e -
-                                 (s+pxy+pz+d), color='C4', alpha=0.5)
-                # hpxy
-                plt.fill_between(k_pz, e+(s+pxy+pz+d+hs), e +
-                                 (s+pxy+pz+d+hs+hpxy), color='C5', alpha=0.5)
-                plt.fill_between(k_pz, e-(s+pxy+pz+d+hs+hpxy),
-                                 e-(s+pxy+pz+d+hs), color='C5', alpha=0.5)
-                # hpz
-                plt.fill_between(k_pz, e+(s+pxy+pz+d+hs+hpxy), e +
-                                 (s+pxy+pz+d+hs+hpxy+hpz), color='C6', alpha=0.5)
-                plt.fill_between(k_pz, e-(s+pxy+pz+d+hs+hpxy+hpz),
-                                 e-(s+pxy+pz+d+hs+hpxy), color='C6', alpha=0.5)
+#                 # Full fat-band
+#                 plt.fill_between(k_pz, e-dE, e+dE, color='k', alpha=0.1)
+#                 # s
+#                 plt.fill_between(k_pz, e-(s), e+(s), color='C0', alpha=0.5)
+#                 # pxy
+#                 plt.fill_between(k_pz, e+(s), e+(s+pxy), color='C1', alpha=0.5)
+#                 plt.fill_between(k_pz, e-(s+pxy), e-(s), color='C1', alpha=0.5)
+#                 # pz
+#                 plt.fill_between(k_pz, e+(s+pxy), e+(s+pxy+pz),
+#                                  color='C2', alpha=0.5)
+#                 plt.fill_between(k_pz, e-(s+pxy+pz), e -
+#                                  (s+pxy), color='C2', alpha=0.5)
+#                 # d
+#                 plt.fill_between(k_pz, e+(s+pxy+pz), e +
+#                                  (s+pxy+pz+d), color='C3', alpha=0.5)
+#                 plt.fill_between(k_pz, e-(s+pxy+pz+d), e -
+#                                  (s+pxy+pz), color='C3', alpha=0.5)
+#                 # hs
+#                 plt.fill_between(k_pz, e+(s+pxy+pz+d), e +
+#                                  (s+pxy+pz+d+hs), color='C4', alpha=0.5)
+#                 plt.fill_between(k_pz, e-(s+pxy+pz+d+hs), e -
+#                                  (s+pxy+pz+d), color='C4', alpha=0.5)
+#                 # hpxy
+#                 plt.fill_between(k_pz, e+(s+pxy+pz+d+hs), e +
+#                                  (s+pxy+pz+d+hs+hpxy), color='C5', alpha=0.5)
+#                 plt.fill_between(k_pz, e-(s+pxy+pz+d+hs+hpxy),
+#                                  e-(s+pxy+pz+d+hs), color='C5', alpha=0.5)
+#                 # hpz
+#                 plt.fill_between(k_pz, e+(s+pxy+pz+d+hs+hpxy), e +
+#                                  (s+pxy+pz+d+hs+hpxy+hpz), color='C6', alpha=0.5)
+#                 plt.fill_between(k_pz, e-(s+pxy+pz+d+hs+hpxy+hpz),
+#                                  e-(s+pxy+pz+d+hs+hpxy), color='C6', alpha=0.5)
 
-    from matplotlib.patches import Patch
-    legend_elements = [Patch(facecolor='C0', label='C: $s$'),
-                       Patch(facecolor='C1', label='C: $p_x+p_y$'),
-                       Patch(facecolor='C2', label='C: $p_z$'),
-                       Patch(facecolor='C3', label='C: $d$'),
-                       Patch(facecolor='C4', label='H: $hs$'),
-                       Patch(facecolor='C5', label='H: $hp_x + hp_y$'),
-                       Patch(facecolor='C6', label='H: $hp_z$')]
-    plt.legend(handles=legend_elements, bbox_to_anchor=[1.1, 0.9])
+#     from matplotlib.patches import Patch
+#     legend_elements = [Patch(facecolor='C0', label='C: $s$'),
+#                        Patch(facecolor='C1', label='C: $p_x+p_y$'),
+#                        Patch(facecolor='C2', label='C: $p_z$'),
+#                        Patch(facecolor='C3', label='C: $d$'),
+#                        Patch(facecolor='C4', label='H: $hs$'),
+#                        Patch(facecolor='C5', label='H: $hp_x + hp_y$'),
+#                        Patch(facecolor='C6', label='H: $hp_z$')]
+#     plt.legend(handles=legend_elements, bbox_to_anchor=[1.1, 0.9])
 
-    num_pz_band = fatpzk/kpoints
-    print(f"Total number of pz fat bands: {round(num_pz_band)} (true value\
-          {num_pz_band}")
+#     num_pz_band = fatpzk/kpoints
+#     print(f"Total number of pz fat bands: {round(num_pz_band)} (true value\
+#           {num_pz_band}")
 
 
 @timer
@@ -791,6 +849,7 @@ def plot_eigst_energy(H, E=0.0, Ewidth=0.1, k=None, figsize=(15, 5), dotsize=100
     sub = np.where(np.logical_and(eig > Emin, eig < Emax))
     es_sub = es.sub(sub)
     es_sub_norm = es_sub.norm2(sum=False).sum(0)
+    print(es_sub_norm.shape)
 
     plt.figure(figsize=figsize)
     plt.scatter(H.xyz[:, 0], H.xyz[:, 1], dotsize*es_sub_norm)
@@ -816,19 +875,21 @@ def ldos(H, location, Erange=[-3, 3], figsize=None,
     ldos = ldos/ldos.max()  # from 0 to 1
     # change the scale, now from rescale[0] to rescale[1]
     ldos = ldos*(rescale[1]-rescale[0]) + rescale[0]
-    
+
     if len(ldos.shape) == 1:
         m, n = ldos.shape[0], 1
     else:
         m, n = ldos.shape
     if not figsize:
         figsize = (1*n, 5)
-    fig, axes = plt.subplots(1, n, sharex=True, sharey=True, figsize=figsize, gridspec_kw={'wspace': 0})
+    fig, axes = plt.subplots(
+        1, n, sharex=True, sharey=True, figsize=figsize, gridspec_kw={'wspace': 0})
     if n > 1:
         for i in range(n):
             ax = axes[i]
             for j in range(m):
-                ax.hlines(eig_sub[j], 0, 1, alpha=ldos[j,i], color='coral', **kwargs)
+                ax.hlines(eig_sub[j], 0, 1, alpha=ldos[j, i],
+                          color='coral', **kwargs)
             ax.set_xticks([])
             ax.set_ylim(Emin, Emax)
             ax.set_title(location[i])
