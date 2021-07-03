@@ -189,6 +189,22 @@ def construct_hamiltonian(gnr):
     return H
 
 
+def find_fermi_energy(name, path):
+    """
+    Read Fermi energy from siesta .out file
+    If the Hamiltonian is read from win file but not fdf file,
+    The Fermi energy won't be shifted automatically.
+    """
+    file_path = os.path.join(path, name+'.out')
+    with open(file_path) as fout:
+        for line in fout:
+            if "Fermi energy" in line:
+                fe_str = line.strip().split()[-2]
+                fe = float(fe_str)
+    # print(f"Fermi energy is: {fe_str} eV")
+    return fe
+
+
 @timer
 def band_structure(H, Erange=[-3, 3], index=False, figsize=(6, 4), tick_labels='XGX', **kwargs):
 
@@ -223,10 +239,80 @@ def band_structure(H, Erange=[-3, 3], index=False, figsize=(6, 4), tick_labels='
             if Erange[0] < ek[-1] < Erange[1]:
                 plt.annotate(i+1, (lk[-1], ek[0]))
 
-                
+
+
 @timer
-def unfold_band(H, lat_vec, kmesh=500, ky=0, marker_size:float=None, 
-                marker_size_range=[2,10], cmap='Reds'):
+def interpolated_bs(name, path, Hint=None, Hpr=None, Erange=[-5, 0], figsize=(6, 4), tick_labels='XGX', overlap=False, npts=30, marker_size=30, marker_color='g', marker='o', facecolors='none', **kwargs):
+    """
+    PLot the interpolated band structure from Wannier90 output file
+    Arguments:
+        Hint: interpolated Hamiltonian
+        Hpr: pristine Hamiltonian
+    """
+    if Hint:
+        ham_int = Hint
+    else:
+        win_path = os.path.join(path, name+'.win')
+        fwin = get_sile(win_path)
+        ham_int = fwin.read_hamiltonian()
+ 
+    labels_dict = {
+        'G': ('$\Gamma$', [0, 0, 0]),
+        'X': ('$X$', [0.5, 0, 0]),  # always put periodic direction in x
+        'M': ('$M$', [0.5, 0.5, 0]),
+        'K': ('$K$', [2./3, 1./3, 0])
+    }
+    tkls = list(tick_labels)
+    tks = []
+    # TO DO this is problematic for time reversal symmetry broken system
+    for i, v in enumerate(tick_labels):
+        tkls[i] = labels_dict[v][0]
+        tks.append(labels_dict[v][1])
+    
+    if not overlap:
+        knpts_int = 400
+    else:
+        knpts_int = npts
+        knpts_pr = 400
+        if not Hpr:
+            raise ValueError("Please provide the pristine Hamiltonian overlap is True")
+        bs_pr = BandStructure(Hpr, tks, knpts_pr, tkls)
+        bsar_pr = bs_pr.apply.array
+        eigh_pr = bsar_pr.eigh()
+        lk_pr = bs_pr.lineark(ticks=False)
+
+    bs_int = BandStructure(ham_int, tks, knpts_int, tkls)
+    bsar_int = bs_int.apply.array
+    eigh_int = bsar_int.eigh()
+    fe = find_fermi_energy(name=name, path=path)
+    eigh_int -= fe
+
+    lk_int, kt, kl = bs_int.lineark(ticks=True)
+    plt.figure(figsize=figsize)
+    plt.xticks(kt, kl)
+    plt.ylim(Erange[0], Erange[-1])
+    plt.ylabel('$E-E_F$ (eV)')
+
+    for i, ek in enumerate(eigh_int.T):
+        plt.plot(lk_int, ek, **kwargs)
+
+    if overlap:
+        for i, ek_pr in enumerate(eigh_pr.T):
+            plt.plot(lk_pr, ek_pr, color='k', **kwargs)
+        for j, ek_int in enumerate(eigh_int.T):
+            plt.scatter(lk_int, ek_int, s=marker_size, marker=marker, facecolors=facecolors, edgecolors='g')
+        plt.xlim(0, lk_pr[-1])
+    else:
+        for i, ek_int in enumerate(eigh_int.T):
+            plt.plot(lk_int, ek_int,**kwargs)
+        plt.xlim(0, lk_int[-1])
+    
+
+
+
+@timer
+def unfold_band(H, lat_vec, kmesh=500, ky=0, marker_size: float = None,
+                marker_size_range=[2, 10], cmap='Reds'):
     """
     Unfold the bandstructure
     Only applies to 1-D structure at the moment
@@ -242,7 +328,7 @@ def unfold_band(H, lat_vec, kmesh=500, ky=0, marker_size:float=None,
     xyz = H.geometry.xyz
     # band lines scale
     bdlscale = np.pi/lat_vec
-    G = H.rcell[0,0]
+    G = H.rcell[0, 0]
     for red_k in np.linspace(-1, 1, kmesh):
         k = red_k*bdlscale
         k_vec = np.array([k, ky, 0])
@@ -271,9 +357,8 @@ def unfold_band(H, lat_vec, kmesh=500, ky=0, marker_size:float=None,
         plt.scatter(kpts, eigh, s=msize,
                     c=weight, cmap=cmap)
         plt.ylabel('$E-E_F (eV)$')
-        plt.xlabel('wavenumber')
-    
-    
+        plt.xlabel('wavenumber ($1 /\AA$)')
+
 
 @timer
 def band_gap(H):
@@ -371,7 +456,8 @@ def get_orb_list(geom):
 
 
 @timer
-def pdos(H, Erange=(-10, 10), figsize=(4, 6), projected_orbitals=['s', 'pxy', 'pz']):
+def pdos(H, Erange=(-10, 10), figsize=(4, 6), Emesh=300,
+         projected_orbitals=['s', 'pxy', 'pz']):
     """
     Projected density of states
     by default plot selected projected orbitals for all the atom species
@@ -389,19 +475,19 @@ def pdos(H, Erange=(-10, 10), figsize=(4, 6), projected_orbitals=['s', 'pxy', 'p
         i = 0
         for a, all_idx in orb_idx_dict.items():
             for orb in projected_orbitals:
-                pdos = PDOS[all_idx[orb], :].sum(0)
                 if orb == 'pxy':
                     label = f'{a}: $p_x+p_y$'
                 elif orb == 'pz':
                     label = f'{a}: $p_z$'
                 else:
                     label = f'{a}: ${orb}$'
-                if pdos.size != 0:  # if it's not empty
+                if all_idx[orb].size != 0:  # if it's not empty
+                    pdos = PDOS[all_idx[orb], :].sum(0)
                     pdos_dict.update({i: [label, pdos]})
                     i += 1
         return np.stack([v[1] for v in pdos_dict.values()])
 
-    E = np.linspace(Erange[0], Erange[-1], 500)
+    E = np.linspace(Erange[0], Erange[-1], Emesh)
     pDOS = bsav.PDOS(E, wrap=wrap)
     plt.figure(figsize=figsize)
     for i in range(pDOS.shape[0]):
@@ -541,7 +627,8 @@ def fat_bands(H, Erange=(-20, 20), figsize=(10, 8),
         proj_ats_orbs = dict(zip(proj_atoms,
                                  [proj_orbs]*len(proj_atoms)))
     else:
-        proj_ats_orbs = convert_formated_str_to_dict(specify_atoms_and_orbitals)
+        proj_ats_orbs = convert_formated_str_to_dict(
+            specify_atoms_and_orbitals)
     print(proj_ats_orbs)
 
     def wrap_fat_bands(eigenstate):
@@ -588,7 +675,7 @@ def fat_bands(H, Erange=(-20, 20), figsize=(10, 8),
 
             # To ensure the color sequence are the same for the same geometry
             # no matter what projected atoms and orbitals you choose, always
-            # iterate all the atoms and all the orbitals. Change their transparency 
+            # iterate all the atoms and all the orbitals. Change their transparency
             # based on whether you want to see it or not
             for a, orbs in wt_dict.items():
                 for orb, wt in orbs.items():
@@ -839,20 +926,36 @@ def plot_eigst_band(H, offset: list = [0], k=None, figsize=(15, 5), dotsize=500)
 def plot_eigst_energy(H, E=0.0, Ewidth=0.1, k=None, figsize=(15, 5), dotsize=100):
     """
     Plot the eigenstates whose eigenvalues are in a specific range, by default around fermi level
+    Note that this method sums all the orbitals of one atom and plot it as a circle,
+    therefore the orbital information is hidden here. To visualize the orbitals, 
+    use ldos_map method instead.
+    pdos adds all the atoms for an orbital, while plot_eigst adds
+    all the orbitals for an atom.
     """
 
-    es = H.eigenstate(k=k) if k else H.eigenstate()
+    geom = H.geometry
+    bs = BandStructure(H, [[0, 0, 0], [1, 0, 0]],
+                       100, ['$\Gamma$', '$\Gamma$'])
+    bsav = bs.apply.average
+
     Emin = E-Ewidth/2
     Emax = E+Ewidth/2
+    mesh_pts = int(Ewidth/0.01)
+    Emesh = np.linspace(Emin, Emax, mesh_pts)
+    lpdos = np.zeros((geom.na, mesh_pts))
 
-    eig = H.eigh()
-    sub = np.where(np.logical_and(eig > Emin, eig < Emax))
-    es_sub = es.sub(sub)
-    es_sub_norm = es_sub.norm2(sum=False).sum(0)
-    print(es_sub_norm.shape)
+    def wrap(PDOS):
+        # local projected dos
+        # sum all the orbitals for each atom
+        for io in range(PDOS.shape[0]):
+            ia = geom.o2a(io)
+            lpdos[ia, :] += PDOS[io, :]
+        return lpdos
 
+    lpdos = bsav.PDOS(Emesh, wrap=wrap)
+    lpdos = lpdos.sum(-1)
     plt.figure(figsize=figsize)
-    plt.scatter(H.xyz[:, 0], H.xyz[:, 1], dotsize*es_sub_norm)
+    plt.scatter(geom.xyz[:, 0], geom.xyz[:, 1], dotsize*lpdos)
     plt.axis('equal')
 
 
@@ -1178,3 +1281,30 @@ def plot_zak_polar(zdict):
                   alpha=r*0.8+0.05)
         #plt.text(rho, r, str(i), color="red", fontsize=10)
         plt.legend(bbox_to_anchor=[1.2, 0.9])
+
+
+def plot_wannier_centers(geom, name, path=None, figsize=(6, 4), sc=False, marker='*', marker_size=5, marker_color='green'):
+    if not path:
+        path = './s2w/'
+    cell = geom.cell
+    gcenter = geom.center()
+    abc = cell.diagonal()
+    file_path = os.path.join(path, name+'_centres.xyz')
+    with open(file_path) as f:
+        contents = f.readlines()
+        # wannier centres in raw coordinates strings
+        wc_raw = contents[2:2+num_wann]
+        # convert it to an array
+        wc = np.array(list(map(lambda x: list(map(
+            float, x.strip().split()[1:])), wc_raw)))
+        wc_hc = wc - np.floor((wc-(gcenter-abc/2))/abc).dot(cell)
+        # sum of wannier centers
+        wcs = wc_hc.sum(0)
+        temp = wcs.dot(np.linalg.inv(cell))
+        wcs = np.dot(temp - np.floor(temp), cell)
+        print('Sum of Wannier centres: ', wcs)
+    plt.figure(figsize=figsize)
+    plot(geom, supercell=sc)
+    plt.scatter(wc_hc[:, 0], wc_hc[:, 1], s=marker_size,
+                c=marker_color, marker=marker)
+    plt.axis('equal')
