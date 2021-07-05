@@ -4,8 +4,9 @@ import matplotlib.pyplot as plt
 import os
 
 import functools
-
+from scipy.sparse import lil_matrix
 from sisl.messages import deprecate
+from .geometry import *
 from .tools import *
 
 
@@ -27,7 +28,7 @@ def find_fermi_energy(name, path):
 
 @timer
 def band_structure(H, Erange=[-3, 3], index=False, figsize=(6, 4),
-                   tick_labels='XGX', **kwargs):
+                   tick_labels='XGX', shift=0.0, **kwargs):
 
     labels_dict = {
         'G': ('$\Gamma$', [0, 0, 0]),
@@ -44,7 +45,7 @@ def band_structure(H, Erange=[-3, 3], index=False, figsize=(6, 4),
 
     bs = BandStructure(H, tks, 400, tkls)
     bsar = bs.apply.array
-    eigh = bsar.eigh()
+    eigh = bsar.eigh() + shift
 
     lk, kt, kl = bs.lineark(True)
 
@@ -117,9 +118,6 @@ def interpolated_bs(name, path, Hint=None, Hpr=None, Erange=[-5, 0],
     plt.ylim(Erange[0], Erange[-1])
     plt.ylabel('$E-E_F$ (eV)')
 
-    for i, ek in enumerate(eigh_int.T):
-        plt.plot(lk_int, ek, **kwargs)
-
     if overlap:
         for i, ek_pr in enumerate(eigh_pr.T):
             plt.plot(lk_pr, ek_pr, color='k', **kwargs)
@@ -134,8 +132,8 @@ def interpolated_bs(name, path, Hint=None, Hpr=None, Erange=[-5, 0],
 
 
 @timer
-def unfold_band(H, lat_vec, kmesh=500, ky=0, marker_size: float = None,
-                marker_size_range=[2, 10], cmap='Reds'):
+def unfold_band(H, lat_vec, Erange=None, kmesh=500, ky=0, marker_size: float = None,
+                marker_size_range=[2, 10], cmap='Reds', shift=0.0, **kwargs):
     """
     Unfold the bandstructure
     Only applies to 1-D structure at the moment
@@ -177,10 +175,13 @@ def unfold_band(H, lat_vec, kmesh=500, ky=0, marker_size: float = None,
             msize = weight*(smax-smin)+smin
         else:
             msize = marker_size
-        plt.scatter(kpts, eigh, s=msize,
-                    c=weight, cmap=cmap)
+        plt.scatter(kpts, eigh+shift, s=msize,
+                    c=weight, cmap=cmap, **kwargs)
         plt.ylabel('$E-E_F (eV)$')
         plt.xlabel('wavenumber ($1 /\AA$)')
+        if Erange:
+            plt.ylim(Erange[0], Erange[1])
+        plt.xlim(-bdlscale, bdlscale)
 
 
 @timer
@@ -196,16 +197,76 @@ def band_gap(H):
     return bg
 
 
+def chain_hamiltonian(Huc, nc:int, **kwargs):
+    """
+    Contruct chain hamiltonian from unit cell hamiltonian.
+    This method build hamiltonian matrix by calculating sparse matrix, different from construct_hamiltonian method. It is to deal with the interpolated Wannier function tight binding basis hamiltonian that is read from _hr.dat file.
+    Arguments:
+        Huc: Hamiltonian of the unit cell
+        nc: number of repeated cells
+    """
+    geom = Huc.geometry
+    nsc = geom.nsc
+    no = geom.no
+    nsc0 = nsc[0] # we focus on one-dimensional system
+    if not nsc0%2:
+        raise ValueError("nsc must be odd number")
+    cutoff = kwargs.get('cutoff', 0.00001)
+    huc = copy_hamiltonian(Huc)
+    huc = np.squeeze(huc)
+
+    # temporary zeros array
+    zeros = np.zeros((nc,nc))
+    # final Hamiltonian
+    Ham = 0
+    
+    for i in range(nsc0):
+        # index of super cell
+        isc = int(i - (nsc0-1)/2)
+        # index of isc in unit cell hamiltonain
+        sc_idx = geom.sc_index([isc,0,0])
+        ham = huc[:,no*sc_idx:no*sc_idx+no]
+        
+        if isc == 0:
+            onem = np.eye(nc)
+        elif isc < 0:
+            onem = zeros.copy()
+            if nc >= -isc+1:
+                onem[-isc:,:isc] = np.eye(nc-abs(isc))
+        elif isc > 0:
+            onem = zeros.copy()
+            if nc >= isc+1:
+                onem[:-isc,isc:] = np.eye(nc-abs(isc))
+        Ham += np.kron(onem, ham)
+    
+    del zeros
+
+    no_tot = no*nc
+    spm = lil_matrix((no_tot, no_tot))
+    for i in range(no_tot):
+        for j in range(no_tot):
+            if abs(Ham[i,j]) > cutoff:
+                spm[i,j] = Ham[i,j]
+    chain = geom.tile(nc, 0)
+    chain.cell[0,0] += 10
+    chain = move_to_xycenter(chain, plot_geom=False)
+    H = Hamiltonian.fromsp(chain, spm)
+    return H
+
+
+
+
+
 @timer
 def energy_levels(H, Erange=[-5, 5], figsize=(1, 5), index=False,
-                  color='darkslategrey', **kwargs):
+                  color='darkslategrey', shift=0.0,**kwargs):
     """
     should be a single molecule, nsc=[1,1,1]
     """
     eig = H.eigh()
     plt.figure(figsize=figsize)
     # use Hermitian solver, read values
-    plt.hlines(eig, 0, 1, color=color, **kwargs)
+    plt.hlines(eig+shift, 0, 1, color=color, **kwargs)
     plt.ylim(Erange[0], Erange[-1])
     plt.ylabel('$E-E_F$ (eV)')
     plt.xticks([])
@@ -1034,7 +1095,10 @@ def plot_wannier_centers(geom, name, path=None, figsize=(6, 4), sc=False, marker
     with open(file_path) as f:
         contents = f.readlines()
         # wannier centres in raw coordinates strings
-        wc_raw = contents[2:2+num_wann]
+        wc_raw = []
+        for line in contents:
+            if line.startswith('X'):
+                wc_raw.append(line)
         # convert it to an array
         wc = np.array(list(map(lambda x: list(map(
             float, x.strip().split()[1:])), wc_raw)))
