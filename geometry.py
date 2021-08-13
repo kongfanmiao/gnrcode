@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from sisl import *
 
 
-def adjust_axes(geom: Geometry, ao: int, ax: int, ay: int, rx, ry, bond_length=1.42,
+def adjust_axes(geom: Geometry, ao: int, ax: int, ay: int, rx=None, ry=None, bond_length=1.0,
                 plot_geom=True):
     """
     Put the geometry in xy plane and align the one dimensional ribbon along x axis.
@@ -17,6 +17,11 @@ def adjust_axes(geom: Geometry, ao: int, ax: int, ay: int, rx, ry, bond_length=1
     Rz = np.cross(Rx, Ry)
     xyz = np.array([Rx, Ry, Rz])
     rz = np.linalg.norm(Rz)
+    # If you want to specify the rx and ry vector length, remeber that the default bond_length
+    # if 1.0, not 1.42
+    if not (rx or ry):
+        rx = geom.rij(ao, ax)
+        ry = geom.rij(ao, ay)
     xyz_new = np.array(
         [[rx*bond_length, 0, 0], [0, ry*bond_length, 0], [0, 0, rz]])
     trans_matrix = np.dot(np.linalg.inv(xyz), xyz_new)
