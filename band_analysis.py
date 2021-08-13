@@ -8,46 +8,96 @@ from scipy.sparse import lil_matrix
 from sisl.messages import deprecate
 from .geometry import *
 from .tools import *
+from glob import glob
+from matplotlib.patches import Patch
 
 
-def find_fermi_energy(name, path):
-    """
-    Read Fermi energy from siesta .out file
-    If the Hamiltonian is read from win file but not fdf file,
-    The Fermi energy won't be shifted automatically.
-    """
-    file_path = os.path.join(path, name+'.out')
-    with open(file_path) as fout:
-        for line in fout:
-            if "Fermi energy" in line:
-                fe_str = line.strip().split()[-2]
-                fe = float(fe_str)
-    # print(f"Fermi energy is: {fe_str} eV")
-    return fe
+# def find_fermi_energy(name, path):
+#     """
+#     Read Fermi energy from siesta .out file
+#     If the Hamiltonian is read from win file but not fdf file,
+#     The Fermi energy won't be shifted automatically.
+#     """
+#     file_path = os.path.join(path, name+'.out')
+#     with open(file_path) as fout:
+#         for line in fout:
+#             if "Fermi energy" in line:
+#                 fe_str = line.strip().split()[-2]
+#                 fe = float(fe_str)
+#     # print(f"Fermi energy is: {fe_str} eV")
+#     return fe
+
+
+def read_final_energy(name, path='./opt', which=None):
+    outfile = name + '.out'
+    filepath = os.path.join(path, outfile)
+    with open(filepath) as fout:
+        line = fout.readline()
+        while 'siesta: Final energy (eV)' not in line:
+            line = fout.readline()
+        energy_dict = {}
+        for i in range(12):
+            line = fout.readline()
+            line = line[7:].strip().split()
+            energy_dict[line[0]] = float(line[-1])
+    print('Total energy: {} eV'.format(energy_dict['Total']))
+    print('Fermi energy: {} eV'.format(energy_dict['Fermi']))
+    if which:
+        which = which.split(',')
+        retlist = []
+        for s in which:
+            for key in energy_dict.keys():
+                if key.lower() == s.strip().lower():
+                    retlist.append(energy_dict[key])
+        if len(retlist) == 1:
+            retlist = retlist[0]
+        return retlist
+
 
 
 @timer
-def band_structure(H, Erange=[-3, 3], index=False, figsize=(6, 4),
-                   tick_labels='XGX', shift=0.0, **kwargs):
+def band_structure(H, name=None, path='./opt', Erange=[-3, 3], index=False, figsize=(6, 4),
+                   tick_labels='XGX', shift=0.0, knpts=200, tb=False, **kwargs):
 
+    """
+    Arguments:
+        tb: if in tight binding formalism
+    """
+    # symbols of tick labels
+    rlv = np.int0(~(np.array(H.nsc) == 1))
     labels_dict = {
         'G': ('$\Gamma$', [0, 0, 0]),
-        'X': ('$X$', [0.5, 0, 0]),  # always put periodic direction in x
+        'X': ('$X$', list(0.5*rlv)),  # always put periodic direction in x
         'M': ('$M$', [0.5, 0.5, 0]),
         'K': ('$K$', [2./3, 1./3, 0])
-    }
+        }
     tkls = list(tick_labels)
+    # Position of ticks in Brillouin zone
     tks = []
-    # TO DO this is problematic for time reversal symmetry broken system
     for i, v in enumerate(tick_labels):
         tkls[i] = labels_dict[v][0]
         tks.append(labels_dict[v][1])
 
-    bs = BandStructure(H, tks, 400, tkls)
+    bs = BandStructure(H, tks, knpts, tkls)
     bsar = bs.apply.array
-    eigh = bsar.eigh() + shift
-
+    # linear k mesh, k ticks, k tick labels
     lk, kt, kl = bs.lineark(True)
+    eigfile = os.path.join(path, f'{name}.eig.{tick_labels}{knpts}.txt')
+    # try to read eigenvalues from file, if not exist then create one
+    try:
+        if tb:
+            raise NotImplementError
+        with open(eigfile) as f:
+            eigh = np.loadtxt(f)
+        assert len(eigh) != 0
+    except:
+        print(f'eig file {eigfile} not found or empty. Now calculate new eig')
+        eigh = bsar.eigh()
+        if not tb:
+            with open(eigfile, 'w') as f:
+                np.savetxt(f, eigh)
+    # Usually the eigenvalues are shifted to Fermi energy by sisl already
+    eigh += shift
 
     plt.figure(figsize=figsize)
     plt.xticks(kt, kl)
@@ -57,6 +107,7 @@ def band_structure(H, Erange=[-3, 3], index=False, figsize=(6, 4),
 
     for i, ek in enumerate(eigh.T):
         plt.plot(lk, ek, **kwargs)
+        # mark the band index
         if index:
             if Erange[0] < ek[-1] < Erange[1]:
                 plt.annotate(i+1, (lk[-1], ek[0]))
@@ -109,7 +160,7 @@ def interpolated_bs(name, path, Hint=None, Hpr=None, Erange=[-5, 0],
     bs_int = BandStructure(ham_int, tks, knpts_int, tkls)
     bsar_int = bs_int.apply.array
     eigh_int = bsar_int.eigh()
-    fe = find_fermi_energy(name=name, path=path)
+    fe = read_final_energy(name=name, path=path, which='fermi')
     eigh_int -= fe
 
     lk_int, kt, kl = bs_int.lineark(ticks=True)
@@ -132,8 +183,8 @@ def interpolated_bs(name, path, Hint=None, Hpr=None, Erange=[-5, 0],
 
 
 @timer
-def unfold_band(H, lat_vec, Erange=None, kmesh=500, ky=0, marker_size: float = None,
-                marker_size_range=[2, 10], cmap='Reds', shift=0.0, **kwargs):
+def unfold_band(H, lat_vec=1.0, Erange=None, kmesh=500, ky=0, marker_size: float = None,
+                marker_size_range=[2, 10], cmap='Reds', shift=0.0, ring=False, **kwargs):
     """
     Unfold the bandstructure
     Only applies to 1-D structure at the moment
@@ -147,6 +198,13 @@ def unfold_band(H, lat_vec, Erange=None, kmesh=500, ky=0, marker_size: float = N
     """
     N = len(H)
     xyz = H.geometry.xyz
+    if ring:
+        xyz = xyz - np.mean(xyz, axis=0)
+        # calculate the circumferential length of the arc and convert it into a
+        # straight vector
+        angle = np.arctan(xyz[:,1]/xyz[:,0])
+        r = np.linalg.norm(xyz[0,:])
+        xyz = np.vstack((r*angle, np.zeros(len(angle)), np.zeros(len(angle)))).T
     # band lines scale
     bdlscale = np.pi/lat_vec
     G = H.rcell[0, 0]
@@ -184,16 +242,35 @@ def unfold_band(H, lat_vec, Erange=None, kmesh=500, ky=0, marker_size: float = N
         plt.xlim(-bdlscale, bdlscale)
 
 
+
 @timer
-def band_gap(H):
+def band_gap(H, name, path='./opt'):
 
-    bs = BandStructure(H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, [
-                       '$\Gamma$', '$X$', '$\Gamma$'])
+    # try to read eigenvalues from file
+    try:
+        files = glob(os.path.join(path, f'{name}.eig*'))
+        assert len(files) != 0
+        # make sure the k path of eig file contains at least from Gamma to X
+        for file in files:
+            if ('GX' in file) or ('XG' in file):
+                eigfile = file 
+                break
+        # if eigfile doesn't exist it will call Name Error
+        with open(eigfile) as f:
+            eig = np.loadtxt(f)
+        assert len(eig) != 0
+    except:
+        print(f'eig file(s) not found or empty. Now calculate new eig')
+        # maybe FileNotFoundError, AssertionError, or NameError
+        eigfile = os.path.join(path, f'{name}.eig.GXG200.txt')
+        rlv = np.int0(~(np.array(H.nsc) == 1))
+        bs = BandStructure(H, [[0,0,0], list(0.5*rlv), list(rlv)], 200, 
+            ['$\Gamma$', 'X', '$\Gamma$'])
+        bsar = bs.apply.array
+        eig = bsar.eigh()
 
-    bsar = bs.apply.array
-    eigh = bsar.eigh()
     bg = functools.reduce(lambda x, y: x if x <= y else y,
-                          (ek[ek > 0].min() - ek[ek < 0].max() for ek in eigh))
+                          (ek[ek > 0].min() - ek[ek < 0].max() for ek in eig))
     return bg
 
 
@@ -255,8 +332,6 @@ def chain_hamiltonian(Huc, nc:int, **kwargs):
 
 
 
-
-
 @timer
 def energy_levels(H, Erange=[-5, 5], figsize=(1, 5), index=False,
                   color='darkslategrey', shift=0.0,**kwargs):
@@ -279,83 +354,189 @@ def energy_levels(H, Erange=[-5, 5], figsize=(1, 5), index=False,
 
 
 @timer
-def dos(H, Erange=[-3, 3], figsize=(4, 6), ret=False, color='k', **kwargs):
+def dos(H, name=None, path='./opt', Erange=[-3, 3], figsize=(2,4), dE=0.01,
+        ret=False, color='k', mpgrid=[30,1,1], gaussian_broadening=0.05, tb=False, **kwargs):
 
-    from functools import partial
-    nsc = H.nsc
-    if (nsc[0] > 1 & nsc[1] == 1 & nsc[2] == 1):
-        bs = BandStructure(H, [[0, 0, 0], [1, 0, 0]],
-                           400, ['$\Gamma$', '$\Gamma$'])
-    elif (nsc[0] == 1 & nsc[1] > 1 & nsc[2] == 1):
-        bs = BandStructure(H, [[0, 0, 0], [0, 1, 0]],
-                           400, ['$\Gamma$', '$\Gamma$'])
+    # Estimate the whole energy range by energy at Gamma point
+    # Calculate DOS for whole energy range, then select to show certain range
+    eg = H.eigh() 
+    E0, E1 = Erange
+    emin = min(-30, E0)
+    emax = max(30, E1)
+    E = np.arange(emin, emax, dE)
+    num2str = lambda x: 'm'+str(x)[1:] if x < 0 else str(x)
+    erangestr = '{}to{}'.format(num2str(emin), num2str(emax))
+    # Firstly try to read dos from file
+    # If the band structure undergoes big change, remember to remove the dos file
+    # because the following code doesn't detect the change in Hamiltonian
+    mp1, mp2, mp3 = mpgrid
+    dosfile = os.path.join(path,
+        f'{name}.dos.{erangestr}.dE{dE}.broaden{gaussian_broadening}.mpgrid{mp1}_{mp2}_{mp3}.txt')
+    try:
+        if tb:
+            raise NotImplementedError
+        with open(dosfile) as f:
+            dos = np.loadtxt(f)
+        assert len(dos) != 0
+    except:
+        if not tb:
+            print(f'dos file {dosfile} not found or empty. Now calculate new dos')
+        mp = MonkhorstPack(H, mpgrid)
+        dis = functools.partial(gaussian, sigma=gaussian_broadening)
+        mpav = mp.apply.average
+        dos = mpav.DOS(E, distribution=dis)
+        # write to file
+        if not tb:
+            with open(dosfile, 'w') as f:
+                np.savetxt(f, dos)
 
-    bsav = bs.apply.average
-    dis = partial(gaussian, sigma=0.05)
-    E = np.linspace(Erange[0], Erange[-1], 500)
     plt.figure(figsize=figsize)
-    DOS = bsav.DOS(E, distribution=dis)
-    plt.plot(DOS, E, color='k', **kwargs)
+    select_range = np.logical_and(E>=Erange[0], E<=Erange[-1])
+    sel_dos = dos[select_range]
+    sel_E = E[select_range]
     plt.ylim(Erange[0], Erange[-1])
-    plt.xlim(0, np.amax(DOS) + 2)
+    plt.xlim(0, sel_dos.max() + 2)
+    plt.plot(sel_dos, sel_E, color=color, **kwargs)
     plt.ylabel('$E-E_F$ (eV)')
-    plt.xlabel('DOS')
+    plt.xlabel('DOS ($eV^{-1}$)')
     if ret:
-        return DOS
+        return sel_dos
+
+
 
 
 @timer
-def pdos(H, Erange=(-10, 10), figsize=(4, 6), Emesh=300,
-         projected_orbitals=['s', 'pxy', 'pz']):
+def pdos(H, name, path='./opt', Erange=[-5, 5], figsize=(4, 6), dE=0.01, gaussian_broadening=0.05, 
+    mpgrid=[30,1,1], projected_atoms='all', projected_orbitals=['s', 'pxy', 'pz']):
     """
     Projected density of states
     by default plot selected projected orbitals for all the atom species
     """
-    geom = H.geometry
-    bs = BandStructure(H, [[0, 0, 0], [1, 0, 0]],
-                       400, ['$\Gamma$', '$\Gamma$'])
-    bsav = bs.apply.average
+    # Firstly try to read pdos from file
+    # The following part is similar to dos
+    E0, E1 = Erange
+    emin = min(-30, E0)
+    emax = max(30, E1)
+    E = np.arange(emin, emax, dE)
+    num2str = lambda x: 'm'+str(x)[1:] if x < 0 else str(x)
+    erangestr = '{}to{}'.format(num2str(emin), num2str(emax))
+    mp1, mp2, mp3 = mpgrid
+    pdosfile = os.path.join(path,
+        f'{name}.pdos.{erangestr}.dE{dE}.broaden{gaussian_broadening}.mpgrid{mp1}_{mp2}_{mp3}.npz')
+    pdos_dict = {} # final data
+    pdos_dict_temp = {} # temporary data used for averaging in the wrap function
+    try:
+        # pdos dictionary with compacted keys
+        pdos_dict_comp = np.load(pdosfile)
+        assert len(pdos_dict_comp.files) != 0
+        # recover the pdos dictionary with two layers of keys
+        for key in pdos_dict_comp.files:
+            a, orb = key.split(':')
+            if not a in pdos_dict.keys():
+                pdos_dict[a] = {}
+            pdos_dict[a][orb] = pdos_dict_comp[key]
+    except:
+        print(f'pdos file {pdosfile} not found or empty. Now calculate new pdos')
+        geom = H.geometry
+        mp = MonkhorstPack(H, mpgrid)
+        mpav = mp.apply.average
+        # index of all the orbitals of each atom species
+        orb_idx_dict = get_orb_list(geom)
 
-    orb_idx_dict = get_orb_list(geom)
-    pdos_dict = {}
-
-    def wrap(PDOS):
-        nonlocal pdos_dict
+        def wrap(PDOS):
+            nonlocal pdos_dict_temp
+            for a, all_idx in orb_idx_dict.items():
+                pd_a = {}
+                # calculation all the orbitals
+                for orb in ['s', 'pxy', 'pz', 'd', 'f']:
+                    if all_idx[orb].size != 0:  # if it's not empty
+                        pd_o = PDOS[all_idx[orb], :].sum(0)
+                        pd_a.update({orb: pd_o})
+                # the wrap function iterates over all the k points
+                # so pdos_dict_temp will be overwrite in each iteration
+                pdos_dict_temp.update({a: pd_a})
+            return np.stack([v for vs in pdos_dict_temp.values() for v in vs.values()])
+        
+        E = np.arange(emin, emax, dE)
+        # calculate the pdos, however, this pdos as single array is not as
+        # useful as the dictionary version. So it won't be used.
+        dis = functools.partial(gaussian, sigma=gaussian_broadening)
+        pDOS = mpav.PDOS(E, wrap=wrap, distribution=dis)
+        # Convert the final array pDOS into dictionary format
+        pdos_dict = pdos_dict_temp.copy() # copy the structure then change the content
         i = 0
-        for a, all_idx in orb_idx_dict.items():
-            for orb in projected_orbitals:
+        for a, pd_a in pdos_dict.items():
+            for orb, pd_o in pd_a.items():
+                pd_a[orb] = pDOS[i,:]
+                i += 1
+        del i
+        # convert the dictionary to compacted version
+        pdos_dict_comp = {}
+        for a, pd_a in pdos_dict.items():
+            for orb, pd_o in pd_a.items():
+                newkey = a+':'+orb
+                pdos_dict_comp[newkey] = pd_o
+        # save to file
+        np.savez(pdosfile, **pdos_dict_comp)
+    
+    # Plot pdos
+    # define list of linestyle, to distinguish atoms
+    linestyle_list = ['solid', 'dotted', 'dashed', 'dashdot',
+                   (0,(3,1,1,1,1,1)), # densely dashdotdotted
+                   (0,(3,5,1,5,1,5)), # dashdotdotted
+                   (0,(1,7)), # loosely dotted
+                   (0,(5,7)), # loosely dashed
+                   (0,(3,7,1,7)) # loosely dashdot
+                   ]
+    # define list of colors, to distinguish orbitals, they correspond to
+    # s, pxy, pz, d, f respectively.
+    color_list = ['C0', 'C1', 'C2', 'C3', 'C4']
+    
+    plt.figure(figsize=figsize)
+    plt.ylabel('$E - E_F$ (eV)')
+    plt.xlabel('PDOS ($eV^{-1}$)')
+    ia = 0 # index of atoms, for line styles
+    pdosmax = 0 # max of pdos
+    for a, pd_a in pdos_dict.items():
+        io = 0 # index of orbitals, for colors
+        # choose atoms
+        if not ((a in projected_atoms) or projected_atoms=='all'):
+            ia += 1
+            continue
+        for orb, pd_o in pd_a.items():
+            # choose orbitals
+            if orb in projected_orbitals:
                 if orb == 'pxy':
                     label = f'{a}: $p_x+p_y$'
                 elif orb == 'pz':
                     label = f'{a}: $p_z$'
                 else:
                     label = f'{a}: ${orb}$'
-                if all_idx[orb].size != 0:  # if it's not empty
-                    pdos = PDOS[all_idx[orb], :].sum(0)
-                    pdos_dict.update({i: [label, pdos]})
-                    i += 1
-        return np.stack([v[1] for v in pdos_dict.values()])
-
-    E = np.linspace(Erange[0], Erange[-1], Emesh)
-    pDOS = bsav.PDOS(E, wrap=wrap)
-    plt.figure(figsize=figsize)
-    for i in range(pDOS.shape[0]):
-        plt.plot(pDOS[i, :], E, color=f'C{i}', label=pdos_dict[i][0])
-    plt.ylim(E[0], E[-1])
-    plt.xlim(0, None)
-    plt.ylabel('$E - E_F$ [eV]')
-    plt.xlabel('DOS [1/eV]')
+                pd = pdos_dict[a][orb]
+                # select the given range to plot
+                select_range = np.logical_and(E>=Erange[0], E<=Erange[-1])
+                sel_pd = pd[select_range]
+                sel_E = E[select_range]
+                plt.plot(sel_pd, sel_E, color=color_list[io], label=label,
+                        linestyle=linestyle_list[ia])
+                pdmax = sel_pd.max()
+                pdosmax = pdmax if pdmax > pdosmax else pdosmax
+            io += 1
+        ia += 1
+    plt.ylim(Erange[0], Erange[-1])
+    plt.xlim(0, pdosmax+0.5)
     plt.legend(bbox_to_anchor=[1.1, 0.9])
 
 
+
 @timer
-def pzdos(H, Erange=[-10, 20], plot_pzdos=True):
+def pzdos(H, Erange=[-10, 20], mpgrid=[30,1,1], gaussian_broadening=0.05,
+          plot_pzdos=True):
 
     import numpy as np
 
-    bs = BandStructure(H, [[0, 0, 0], [1, 0, 0]],
-                       400, ['$\Gamma$', '$\Gamma$'])
-    bsav = bs.apply.average
+    mp = MonkhorstPack(H, mpgrid)
+    mpav = mp.apply.average
 
     C_atoms = []
     H_atoms = []
@@ -377,7 +558,8 @@ def pzdos(H, Erange=[-10, 20], plot_pzdos=True):
         return pdos_pz
     Emin, Emax = Erange
     E = np.linspace(Emin, Emax, 100)
-    pDOS = bsav.PDOS(E, wrap=wrap)
+    dis = functools.partial(gaussian, sigma=gaussian_broadening)
+    pDOS = mpav.PDOS(E, wrap=wrap, distribution=dis)
     if plot_pzdos:
         for i, label in enumerate(all_pz):
             plt.plot(E, pDOS[i, :], label=label)
@@ -388,6 +570,7 @@ def pzdos(H, Erange=[-10, 20], plot_pzdos=True):
         plt.title("Project DOS on pz orbitals")
         plt.legend(loc="best", bbox_to_anchor=[1.4, 0.9])
     return pDOS
+
 
 
 def pzweight(H, Erange=[-10, 0]):
@@ -402,30 +585,45 @@ def pzweight(H, Erange=[-10, 0]):
 
 
 @timer
-def fat_bands(H, Erange=(-20, 20), figsize=(10, 8),
-              projected_atoms='all',
-              projected_orbitals=['s', 'pxy', 'pz'],
-              specify_atoms_and_orbitals=None,
-              index=False,
-              alpha=0.75):
+def fat_bands(H, name, path='./opt', Erange=(-10, 10), figsize=(6, 10),
+            tick_labels='XGX', knpts=200, split_view=False,
+            projected_atoms='all',
+            projected_orbitals=['s', 'pxy', 'pz'],
+            specify_atoms_and_orbitals=None,
+            index=False, legend_position=[1.2,0.9],
+            alpha=1.0):
     """
     Plot the fat bands, showing the weight of each kinds of orbital of every band.
-    specify_atoms_and_orbitals should follow the following format:
-        'C: pz; N: pxy'
-    If the specify_atosm_and_orbitals argument is not None, then it will overwrite 
-    the projected_atoms and projected_orbitals arguments.
-    If not, the projected orbitals will be all the orbitals in projected_orbitals of
-    each atoms in projected_atoms.
+    Arguments:
+        tick_labels: By default the fat bands for different atoms are plot in
+            one figure and the ticks are from X to G to X. For split view the
+            ticks are from G to X for each subplot by default.
+        split_view: show fat bands for different atomic species in differetn
+            subplots.
+        specify_atoms_and_orbitals: should follow the following format:
+            'C: pz; N: pxy'. If the specify_atoms_and_orbitals argument is 
+            not None, then it will overwrite the projected_atoms and 
+            projected_orbitals arguments. If not, the projected orbitals will
+            be all the orbitals in projected_orbitals of each atoms in 
+            projected_atoms.
     """
+    # symbols of tick labels
+    rlv = np.int0(~(np.array(H.nsc) == 1))
+    labels_dict = {
+        'G': ('$\Gamma$', [0, 0, 0]),
+        'X': ('$X$', list(0.5*rlv)),  # always put periodic direction in x
+        'M': ('$M$', [0.5, 0.5, 0]),
+        'K': ('$K$', [2./3, 1./3, 0])
+        }
+    # Position of ticks in Brillouin zone
+    tks = []
+    tkls = list(tick_labels)
+    for i, v in enumerate(tick_labels):
+        tkls[i] = labels_dict[v][0]
+        tks.append(labels_dict[v][1])
+    bs = BandStructure(H, tks, knpts, tkls)
     geom = H.geometry
     orb_idx_dict = get_orb_list(geom)
-    # initialize the weight dictionary
-    wt_dict = {}
-    for a, orbs in orb_idx_dict.items():
-        wt_dict[a] = {}
-        for orb in orbs.keys():
-            wt_dict[a][orb] = []
-
     # Generate the atoms and corresponding orbitals that you want to project on
     if not specify_atoms_and_orbitals:
         if projected_atoms == 'all':
@@ -442,300 +640,207 @@ def fat_bands(H, Erange=(-20, 20), figsize=(10, 8),
         proj_ats_orbs = convert_formated_str_to_dict(
             specify_atoms_and_orbitals)
     print(proj_ats_orbs)
-
-    def wrap_fat_bands(eigenstate):
-        """
-        <psi_{i,v}|S(k)|psi_i>
-        return the eigenvalue for a specify eigenstat and calculate
-        the weight for each orbitals.
-        """
-        nonlocal wt_dict
-        norm2 = eigenstate.norm2(sum=False)
+    
+    # Try to read fatbands from file
+    fbwtfile = os.path.join(path, 
+        f'{name}.fatbands.weight.{tick_labels}{knpts}.npz')
+    fbeigfile = os.path.join(path,
+        f'{name}.fatbands.eig.{tick_labels}{knpts}.txt')
+    wt_dict = {}
+    try:
+        wt_dict_comp = np.load(fbwtfile)
+        assert len(wt_dict_comp.files) != 0
+        for key in wt_dict_comp.files:
+            a, orb = key.split(':')
+            if a not in wt_dict.keys():
+                wt_dict[a] = {}
+            wt_dict[a][orb] = wt_dict_comp[key]
+        eig = np.loadtxt(fbeigfile)
+        assert len(eig) != 0
+    except:
+        print(f'fatbands files not found or empty. Now calculate new fatbands')
+        # initialize the weight dictionary
         for a, orbs in orb_idx_dict.items():
-            for orb, indices in orbs.items():
-                if len(indices) != 0:
-                    wt_k = norm2[:, indices].sum(-1)
-                    wt_dict[a][orb].append(wt_k)
-        return eigenstate.eig
+            wt_dict[a] = {}
+            for orb in orbs.keys():
+                wt_dict[a][orb] = []
+        bsar = bs.apply.array
 
-    bs = BandStructure(H, [[-0.5, 0, 0], [0, 0, 0], [0.5, 0, 0]],
-                       400, ['$X$', '$\Gamma$', '$X$'])
-    bsar = bs.apply.array
-    eig = bsar.eigenstate(wrap=wrap_fat_bands).T
-    # after transposition, k is as column, e is as row, consistent with eig
-    for value in wt_dict.values():
-        for k in value.keys():
-            value[k] = np.array(value[k]).T
+        def wrap_fat_bands(eigenstate):
+            """
+            <psi_{i,v}|S(k)|psi_i>
+            return the eigenvalue for a specify eigenstat and calculate
+            the weight for each orbitals.
+            """
+            nonlocal wt_dict
+            norm2 = eigenstate.norm2(sum=False)
+            # calculate the weight for every kind of atom and orbital
+            for a, orbs in orb_idx_dict.items():
+                for orb, indices in orbs.items():
+                    if len(indices) != 0:
+                        wt_k = norm2[:, indices].sum(-1)
+                        wt_dict[a][orb].append(wt_k)
+            return eigenstate.eig
+        
+        eig = bsar.eigenstate(wrap=wrap_fat_bands)
+        # convert the items in wt_dict to numpy array
+        for a, wt_a in wt_dict.items():
+            for orb in wt_a.keys():
+                wt_a[orb] = np.array(wt_a[orb])
+        # save to file
+        wt_dict_comp = {}
+        for a, wt_a in wt_dict.items():
+            for orb, wt_o in wt_a.items():
+                newkey = a+':'+orb
+                wt_dict_comp[newkey] = wt_o
+        np.savez(fbwtfile, **wt_dict_comp)
+        np.savetxt(fbeigfile, eig)
+    # Prepare for plotting
     linear_k, k_tick, k_label = bs.lineark(True)
+    # define colors, row for orbital, column for atom
+    color_list = [
+        ['dodgerblue','cyan','navy','steelblue','teal','blue'], # s 
+        ['orange','yellow','goldenrod','darkorange','gold','peru'], # pxy
+        ['limegreen','palegreen','darkgreen','lime','darkseagreen','aquamarine'], # pz
+        ['red','lightcoral','darkred','darksalmon','mistyrose','rosybrown'], # d
+        ['purple','thistle','darkmagenta','magenta','violet','indigo'] # f
+        ]
     Emin, Emax = Erange
     dE = (Emax - Emin)/(figsize[1]*5)
-    plt.figure(figsize=figsize)
-    plt.ylabel('$E-E_F$ [eV]')
-    plt.xlim(linear_k[0], linear_k[-1])
-    plt.xticks(k_tick, k_label)
-    plt.ylim(Emin, Emax)
+    if split_view:
+        na = len(proj_ats_orbs.keys())
+        figsize_new = (na*figsize[0], figsize[1])
+        fig, axes = plt.subplots(1, na, sharex=False, sharey=True,
+            figsize=figsize_new, gridspec_kw={'wspace': 0})
+        axes[0].set_ylabel('$E-E_F$ [eV]')
+        axes[0].set_ylim(Emin, Emax)
+        axes[0].set_xticks(k_tick)
+        axes[0].set_xticklabels(k_label)
+        for i in range(na-1):
+            axes[i+1].set_xticks([])
+    else:
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot()
+        ax.set_ylabel('$E-E_F$ [eV]')
+        ax.set_xlim(linear_k[0], linear_k[-1])
+        ax.set_xticks(k_tick)
+        ax.set_xticklabels(k_label)
+        ax.set_ylim(Emin, Emax)
 
     legend_dict = {}
-    for i, e in enumerate(eig):
+    # ib is the band index
+    for ib, e in enumerate(eig.T):
+        # if the band has any segments that are in the selected energy range
         if np.any(np.logical_and(e < Emax, e > Emin)):
-            t = 0
             filled_range = np.array([e, e])
-            plt.plot(linear_k, e, color='k')
-            if index:
-                plt.annotate(i+1, (linear_k[-1], e[-1]))
-            # plt.fill_between(linear_k, e-dE, e+dE, color='k', alpha=0.4)
-
-            # To ensure the color sequence are the same for the same geometry
-            # no matter what projected atoms and orbitals you choose, always
-            # iterate all the atoms and all the orbitals. Change their transparency
-            # based on whether you want to see it or not
-            for a, orbs in wt_dict.items():
-                for orb, wt in orbs.items():
-                    if wt.size != 0:
-                        try:
-                            # make sure the orbital of this atom is meant to
-                            # be projected
-                            assert orb in proj_ats_orbs[a]
-                            # if yes, plot it, alpha is not zero
+            if split_view:
+                for iax in range(na):
+                    axes[iax].plot(linear_k, e, color='k')
+                    if index:
+                        ax[-1].annotate(ib+1, (linear_k[-1], e[-1]))
+            else:
+                ax.plot(linear_k, e, color='k')
+                if index:
+                    ax.annotate(ib+1, (linear_k[-1], e[-1]))
+            # always iterate all the atoms and all the orbitals. Change their transparency
+            # based on whether you want to see it or not.
+            # ia: index of atom, ifig: index of figure. They are different because some 
+            # atoms might not be chosen to plot
+            ia = 0
+            ifig = 0
+            for a, wt_a in wt_dict.items():
+                io = 0 # index of orbital
+                if not a in proj_ats_orbs.keys():
+                    # if the atom is skipped then change ia only but not ifig
+                    ia += 1
+                    continue
+                for orb, wt_o in wt_a.items():
+                    # wt_o is a list
+                    if len(wt_o) != 0:
+                        # if the orbital of this atom is chosen to
+                        # be projected, then alpha is alpha, if not,
+                        # alpha is set to zero and it won't be put in
+                        # the legend dictionary
+                        if orb in proj_ats_orbs[a]:
                             alp = alpha
-                            # and define the legend patch
+                            # define the legend patch
                             if orb == 'pxy':
                                 label = f'{a}: $p_x+p_y$'
                             elif orb == 'pz':
                                 label = f'{a}: $p_z$'
                             else:
                                 label = f'{a}: ${orb}$'
-                            legend_dict[t] = label
-                        except:
-                            # if not, it will be totally transparent
-                            alp = 0
-                        weight = np.abs(wt[i, :]*dE)
-                        plt.fill_between(
+                            legend_dict.update({label: (ia, io)})
+                        else:
+                            alp = 0.0
+                        # the wt_o array changes k along column, while changes band
+                        # index along row.
+                        weight = np.abs(wt_o[:, ib]*dE)
+                        c = color_list[io][ia]
+                        if split_view:
+                            ax = axes[ifig]
+                            ax.set_ylim(Emin, Emax)
+                            ax.set_title(a)
+                            ax.set_xlim(linear_k[0], linear_k[-1])
+                        ax.fill_between(
                             linear_k, filled_range[0]-weight,
-                            filled_range[0], color=f'C{t}', alpha=alp)
-                        plt.fill_between(
+                            filled_range[0], color=c,
+                            alpha=alp)
+                        ax.fill_between(
                             linear_k, filled_range[1],
-                            filled_range[1]+weight, color=f'C{t}', alpha=alp)
-                        # update the already filled range
+                            filled_range[1]+weight, color=c,
+                            alpha=alp)
+                        # update the "already filled range"
                         filled_range = filled_range + \
                             np.array([-weight, weight])
-                        t += 1
+                    io += 1
+                ifig += 1
+                ia += 1
+                
+    legend_elements = [Patch(facecolor=color_list[idx[1]][idx[0]], label=label)
+                        for label, idx in legend_dict.items()]
+    plt.legend(handles=legend_elements, bbox_to_anchor=legend_position)
 
-    from matplotlib.patches import Patch
-
-    legend_elements = [Patch(facecolor=f'C{t}', label=label)
-                       for t, label in legend_dict.items()]
-    plt.legend(handles=legend_elements, bbox_to_anchor=[1.1, 0.9])
-
-
-# @timer
-# def fat_bands_pz(H, Erange=(-10, 0), index=False, figsize=(10, 8)):
-#     """
-#     Plot the fat bands, showing the weight of each kinds of orbital of every band.
-#     """
-
-#     C_atoms = []
-#     H_atoms = []
-#     for i, at in enumerate(H.atoms):
-#         if at.Z == 6:
-#             C_atoms.append(i)
-#         elif at.Z == 1:
-#             H_atoms.append(i)
-
-#     idx_s = []
-#     idx_pxy = []
-#     idx_pz = []
-#     idx_d = []
-#     for i, orb in enumerate(H.geometry.atoms[C_atoms[0]]):
-#         if orb.l == 0:
-#             idx_s.append(i)
-#         elif orb.l == 1 and (orb.m in [-1, 1]):
-#             idx_pxy.append(i)
-#         elif orb.l == 1 and orb.m == 0:
-#             idx_pz.append(i)
-#         elif orb.l == 2:
-#             idx_d.append(i)
-
-#     idx_hs = []
-#     idx_hpz = []
-#     idx_hpxy = []
-#     for i, orb in enumerate(H.geometry.atoms[H_atoms[0]]):
-#         if orb.l == 1 and orb.m == 0:
-#             idx_hpz.append(i)
-#         elif orb.l == 1 and (orb.m in [-1, 1]):
-#             idx_hpxy.append(i)
-#         elif orb.l == 0:
-#             idx_hs.append(i)
-
-#     all_s = np.add.outer(H.geometry.a2o(C_atoms), idx_s).ravel()
-#     all_pxy = np.add.outer(H.geometry.a2o(C_atoms), idx_pxy).ravel()
-#     all_pz = np.add.outer(H.geometry.a2o(C_atoms), idx_pz).ravel()
-#     all_d = np.add.outer(H.geometry.a2o(C_atoms), idx_d).ravel()
-#     all_hs = np.add.outer(H.geometry.a2o(H_atoms), idx_hs).ravel()
-#     all_hpxy = np.add.outer(H.geometry.a2o(H_atoms), idx_hpxy).ravel()
-#     all_hpz = np.add.outer(H.geometry.a2o(H_atoms), idx_hpz).ravel()
-
-#     weight_s = []
-#     weight_pxy = []
-#     weight_pz = []
-#     weight_d = []
-#     weight_hs = []
-#     weight_hpxy = []
-#     weight_hpz = []
-
-#     def wrap_fat_bands(eigenstate):
-#         """
-#         <psi_{i,v}|S(k)|psi_i>
-#         """
-#         norm2 = eigenstate.norm2(sum=False)
-#         weight_s.append(norm2[:, all_s].sum(-1))
-#         weight_pxy.append(norm2[:, all_pxy].sum(-1))
-#         weight_pz.append(norm2[:, all_pz].sum(-1))
-#         weight_d.append(norm2[:, all_d].sum(-1))
-#         weight_hs.append(norm2[:, all_hs].sum(-1))
-#         weight_hpxy.append(norm2[:, all_hpxy].sum(-1))
-#         weight_hpz.append(norm2[:, all_hpz].sum(-1))
-#         return eigenstate.eig
-
-#     kpoints = 400
-#     bs = BandStructure(H, [[0, 0, 0], [1, 0, 0]],
-#                        kpoints, ['$\Gamma$', '$\Gamma$'])
-#     bsar = bs.apply.array
-#     eig = bsar.eigenstate(wrap=wrap_fat_bands).T
-
-#     linear_k, k_tick, k_label = bs.lineark(True)
-
-#     Emin, Emax = Erange
-#     dE = (Emax - Emin)/(figsize[1]*5)
-
-#     weight_s = np.array(weight_s).T
-#     weight_pxy = np.array(weight_pxy).T
-#     weight_pz = np.array(weight_pz).T
-#     weight_d = np.array(weight_d).T
-#     weight_hs = np.array(weight_hs).T
-#     weight_hpxy = np.array(weight_hpxy).T
-#     weight_hpz = np.array(weight_hpz).T
-
-#     plt.figure(figsize=figsize)
-#     plt.ylabel('$E-E_F$ [eV]')
-#     plt.xlim(linear_k[0], linear_k[-1])
-#     plt.xticks(k_tick, k_label)
-#     plt.ylim(Emin, Emax)
-
-#     fatpzk = 0
-#     for i, e_all_k in enumerate(eig):
-#         s_abs = np.abs(weight_s[i, :] * dE)
-#         pxy_abs = np.abs(weight_pxy[i, :] * dE)
-#         pz_abs = np.abs(weight_pz[i, :] * dE)
-#         d_abs = np.abs(weight_d[i, :] * dE)
-#         hs_abs = np.abs(weight_hs[i, :] * dE)
-#         hpxy_abs = np.abs(weight_hpxy[i, :] * dE)
-#         hpz_abs = np.abs(weight_hpz[i, :] * dE)
-#         plt.plot(linear_k, e_all_k, color='k')
-#         if index:
-#             if Erange[0] < e_all_k[-1] < Erange[1]:
-#                 plt.annotate(i+1, (linear_k[-1], e_all_k[-1]))
-
-#         if np.any(pz_abs/dE > 0.5):
-#             # select k-points where pz makes major contribution
-#             where_pz = np.where(pz_abs/dE > 0.5)[0]
-#             if where_pz.size:
-#                 fatpzk += len(where_pz)
-
-#             # split the k-points array into seperate segments
-#             klist = []  # list of k-segments
-#             kseg = []  # k-segments
-#             for i in range(len(where_pz)):
-#                 if where_pz[i] - where_pz[i-1] > 1:
-#                     klist.append(kseg)
-#                     kseg = []
-#                 kseg.append(where_pz[i])
-#             klist.append(kseg)
-
-#             for i in range(len(klist)):
-#                 k_pz = linear_k[klist[i]]
-#                 e = e_all_k[klist[i]]
-#                 s = s_abs[klist[i]]
-#                 pxy = pxy_abs[klist[i]]
-#                 pz = pz_abs[klist[i]]
-#                 d = d_abs[klist[i]]
-#                 hs = hs_abs[klist[i]]
-#                 hpxy = hpxy_abs[klist[i]]
-#                 hpz = hpz_abs[klist[i]]
-
-#                 # Full fat-band
-#                 plt.fill_between(k_pz, e-dE, e+dE, color='k', alpha=0.1)
-#                 # s
-#                 plt.fill_between(k_pz, e-(s), e+(s), color='C0', alpha=0.5)
-#                 # pxy
-#                 plt.fill_between(k_pz, e+(s), e+(s+pxy), color='C1', alpha=0.5)
-#                 plt.fill_between(k_pz, e-(s+pxy), e-(s), color='C1', alpha=0.5)
-#                 # pz
-#                 plt.fill_between(k_pz, e+(s+pxy), e+(s+pxy+pz),
-#                                  color='C2', alpha=0.5)
-#                 plt.fill_between(k_pz, e-(s+pxy+pz), e -
-#                                  (s+pxy), color='C2', alpha=0.5)
-#                 # d
-#                 plt.fill_between(k_pz, e+(s+pxy+pz), e +
-#                                  (s+pxy+pz+d), color='C3', alpha=0.5)
-#                 plt.fill_between(k_pz, e-(s+pxy+pz+d), e -
-#                                  (s+pxy+pz), color='C3', alpha=0.5)
-#                 # hs
-#                 plt.fill_between(k_pz, e+(s+pxy+pz+d), e +
-#                                  (s+pxy+pz+d+hs), color='C4', alpha=0.5)
-#                 plt.fill_between(k_pz, e-(s+pxy+pz+d+hs), e -
-#                                  (s+pxy+pz+d), color='C4', alpha=0.5)
-#                 # hpxy
-#                 plt.fill_between(k_pz, e+(s+pxy+pz+d+hs), e +
-#                                  (s+pxy+pz+d+hs+hpxy), color='C5', alpha=0.5)
-#                 plt.fill_between(k_pz, e-(s+pxy+pz+d+hs+hpxy),
-#                                  e-(s+pxy+pz+d+hs), color='C5', alpha=0.5)
-#                 # hpz
-#                 plt.fill_between(k_pz, e+(s+pxy+pz+d+hs+hpxy), e +
-#                                  (s+pxy+pz+d+hs+hpxy+hpz), color='C6', alpha=0.5)
-#                 plt.fill_between(k_pz, e-(s+pxy+pz+d+hs+hpxy+hpz),
-#                                  e-(s+pxy+pz+d+hs+hpxy), color='C6', alpha=0.5)
-
-#     from matplotlib.patches import Patch
-#     legend_elements = [Patch(facecolor='C0', label='C: $s$'),
-#                        Patch(facecolor='C1', label='C: $p_x+p_y$'),
-#                        Patch(facecolor='C2', label='C: $p_z$'),
-#                        Patch(facecolor='C3', label='C: $d$'),
-#                        Patch(facecolor='C4', label='H: $hs$'),
-#                        Patch(facecolor='C5', label='H: $hp_x + hp_y$'),
-#                        Patch(facecolor='C6', label='H: $hp_z$')]
-#     plt.legend(handles=legend_elements, bbox_to_anchor=[1.1, 0.9])
-
-#     num_pz_band = fatpzk/kpoints
-#     print(f"Total number of pz fat bands: {round(num_pz_band)} (true value\
-#           {num_pz_band}")
-
+    
 
 @timer
-def plot_eigst_band(H, offset: list = [0], k=None, figsize=(15, 5), dotsize=500):
+def plot_eigst_band(H, offset: list = [0], k=None, figsize=(15, 5), dotsize=500,
+                    phase=False):
     """
     Plot the eigenstate of a band, by default the topmost valence band
     - offset: offset from the fermi level, or, the topmost valence band
     """
+    _k = k if k else [0,0,0]
 
-    es = H.eigenstate(k=k) if k else H.eigenstate()
-
-    occn = len(H) // 2 - 1
-    print("Index of the HOMO: ", occn)
+    es = H.eigenstate(k=_k)
+    eig = H.eigh(k=_k)
+    num_occ = len(eig[eig<0])
+    
+    print("Index of the HOMO: ", num_occ-1)
     bands = []
     offset.sort()
     for i in offset:
-        bands.append(occn+i)
+        bands.append(num_occ-1+i)
     print("Bands that are taken into account: ", bands)
-    print("Energy: ", [H.eigh()[i] for i in bands])
+    print("Energy: ", [H.eigh(k=_k)[i] for i in bands])
     plt.figure(figsize=figsize)
-    esnorm = es.sub(bands).norm2(sum=False).sum(0)
-    plt.scatter(H.xyz[:, 0], H.xyz[:, 1], dotsize*esnorm)
+    if not phase:
+        esnorm = es.sub(bands).norm2(sum=False).sum(0)
+        plt.scatter(H.xyz[:, 0], H.xyz[:, 1], dotsize*esnorm)
+    else:
+        if len(offset) != 1:
+            raise ValueError("Choose only one band if you want to visualize the\
+            state with phase")
+        esstate = es.sub(bands).state
+        plt.scatter(H.xyz[:, 0], H.xyz[:, 1], dotsize*np.abs(esstate),
+                    c=esstate, cmap='bwr')
     plt.axis('equal')
 
 
+
 @timer
-def plot_eigst_energy(H, E=0.0, Ewidth=0.1, k=None, figsize=(15, 5), dotsize=100):
+def plot_eigst_energy(H, E=0.0, Ewidth=0.1, k=None, figsize=(15, 5), dotsize=100,
+                     mpgrid=[30,1,1], gaussian_broadening=0.05, dE=0.01):
     """
     Plot the eigenstates whose eigenvalues are in a specific range, by default around fermi level
     Note that this method sums all the orbitals of one atom and plot it as a circle,
@@ -746,13 +851,12 @@ def plot_eigst_energy(H, E=0.0, Ewidth=0.1, k=None, figsize=(15, 5), dotsize=100
     """
 
     geom = H.geometry
-    bs = BandStructure(H, [[0, 0, 0], [1, 0, 0]],
-                       100, ['$\Gamma$', '$\Gamma$'])
-    bsav = bs.apply.average
+    mp = MonkhorstPack(H, mpgrid)
+    mpav = mp.apply.average
 
     Emin = E-Ewidth/2
     Emax = E+Ewidth/2
-    mesh_pts = int(Ewidth/0.01)
+    mesh_pts = int(Ewidth/dE)
     Emesh = np.linspace(Emin, Emax, mesh_pts)
     lpdos = np.zeros((geom.na, mesh_pts))
 
@@ -763,8 +867,9 @@ def plot_eigst_energy(H, E=0.0, Ewidth=0.1, k=None, figsize=(15, 5), dotsize=100
             ia = geom.o2a(io)
             lpdos[ia, :] += PDOS[io, :]
         return lpdos
-
-    lpdos = bsav.PDOS(Emesh, wrap=wrap)
+    
+    dis = functools.partial(gaussian, sigma=gaussian_broadening)
+    lpdos = mpav.PDOS(Emesh, wrap=wrap, distribution=dis)
     lpdos = lpdos.sum(-1)
     plt.figure(figsize=figsize)
     plt.scatter(geom.xyz[:, 0], geom.xyz[:, 1], dotsize*lpdos)
@@ -822,7 +927,8 @@ def ldos(H, location, Erange=[-3, 3], figsize=None,
 
 
 @timer
-def ldos_map(H, E=0.0, Ewidth=0.1, height=3.0, mesh=0.1, figsize=(15, 5), colorbar=False):
+def ldos_map(H, E=0.0, Ewidth=0.1, k=[0,0,0], height=3.0, mesh=0.1, 
+             figsize=(15, 5), norm=True, colorbar=False):
     """
     Localized Density of States
     - E: the median of the energy range that you want to investigate
@@ -834,8 +940,8 @@ def ldos_map(H, E=0.0, Ewidth=0.1, height=3.0, mesh=0.1, figsize=(15, 5), colorb
     Emin = E-Ewidth/2
     Emax = E+Ewidth/2
 
-    es = H.eigenstate()
-    eig = H.eigh()
+    es = H.eigenstate(k=k)
+    eig = H.eigh(k=k)
     sub = np.where(np.logical_and(eig > Emin, eig < Emax))[0]
 
     dos = 0
@@ -915,12 +1021,28 @@ def zak(contour, sub=None, gauge='R'):
 
 
 @timer
-def inter_zak(H, offset=0):
+def inter_zak(H, offset=0, fermi_energy=0.0):
 
-    bs = BandStructure(H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, [
+    bs = BandStructure(H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 200, [
                        '$\Gamma$', '$X$', '$\Gamma$'])
 
-    occ = [i for i in range(len(H.eig())//2)]
+    bsar = bs.apply.array
+    lk  = bs.lineark(ticks=False)
+    eigh = bsar.eigh() # row-k, column-energy
+    e0 = eigh[0,:] # at Gamma point
+    occ0 = len(e0[e0<fermi_energy]) # at Gamma point
+    # make sure it is insulator, band lines don't pass fermi level
+    for i in range(eigh.shape[0]):
+        ei = eigh[i,:]
+        occi = len(ei[ei<fermi_energy])
+        if occi != occ0:
+            ki = [lk[i],0,0]
+            redki = bs.toreduced(ki)
+            raise RuntimeError("Band line pass the fermi level at k point \
+                [{:.2f} {:.2f} {:.2f}] (Reduced: [{:.2f} {:.2f} {:.2f}].\
+                occ0: {}, occi: {}".format(
+                *ki, *redki, occ0, occi))
+    occ = [i for i in range(occ0)]
     if offset == 0:
         occ = occ
     elif offset > 0:
@@ -929,7 +1051,7 @@ def inter_zak(H, offset=0):
     elif offset < 0:
         for i in range(-offset):
             occ.pop()
-
+    print('Bands taken into account: {} to {}'.format(occ[0]+1, occ[-1]+1))
     gamma_inter = zak(bs, sub=occ, gauge='R')
 
     return round(gamma_inter, 10)
