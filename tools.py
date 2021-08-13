@@ -49,17 +49,19 @@ def construct_hamiltonian(gnr):
     return H
 
 
-def get_atom_list(geom):
+
+
+
+def get_orb_list(geom):
+    """
+    Get the indices of all the orbitals for each atom species
+    """
+    # The index of first orbitals for each atoms, classifed based on atomic species
     aidx_dict = {}
     for ia, a, isp in geom.iter_species():
         if a.symbol not in aidx_dict.keys():
             aidx_dict[a.symbol] = []
         aidx_dict[a.symbol].append(geom.a2o(ia))
-    return aidx_dict
-
-
-def get_orb_list(geom):
-    aidx_dict = get_atom_list(geom)
     oidx_dict = {}
     idx_dict = {}
     orb_list = ['s', 'pxy', 'pz', 'd', 'f']
