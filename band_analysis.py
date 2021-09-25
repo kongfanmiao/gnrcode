@@ -407,7 +407,8 @@ def dos(H, name=None, path='./opt', Erange=[-3, 3], figsize=(2,4), dE=0.01,
 
 @timer
 def pdos(H, name, path='./opt', Erange=[-5, 5], figsize=(4, 6), dE=0.01, gaussian_broadening=0.05, 
-    mpgrid=[30,1,1], projected_atoms='all', projected_orbitals=['s', 'pxy', 'pz']):
+    mpgrid=[30,1,1], projected_atoms='all', projected_orbitals=['s', 'pxy', 'pz'],
+    legend_position=[1.1,0.9]):
     """
     Projected density of states
     by default plot selected projected orbitals for all the atom species
@@ -525,7 +526,7 @@ def pdos(H, name, path='./opt', Erange=[-5, 5], figsize=(4, 6), dE=0.01, gaussia
         ia += 1
     plt.ylim(Erange[0], Erange[-1])
     plt.xlim(0, pdosmax+0.5)
-    plt.legend(bbox_to_anchor=[1.1, 0.9])
+    plt.legend(bbox_to_anchor=legend_position)
 
 
 
@@ -805,7 +806,7 @@ def fat_bands(H, name, path='./opt', Erange=(-10, 10), figsize=(6, 10),
 
 @timer
 def plot_eigst_band(H, offset: list = [0], k=None, figsize=(15, 5), dotsize=500,
-                    phase=False):
+                    phase=False, fermi_energy=0.0):
     """
     Plot the eigenstate of a band, by default the topmost valence band
     - offset: offset from the fermi level, or, the topmost valence band
@@ -814,7 +815,7 @@ def plot_eigst_band(H, offset: list = [0], k=None, figsize=(15, 5), dotsize=500,
 
     es = H.eigenstate(k=_k)
     eig = H.eigh(k=_k)
-    num_occ = len(eig[eig<0])
+    num_occ = len(eig[eig<fermi_energy])
     
     print("Index of the HOMO: ", num_occ-1)
     bands = []
