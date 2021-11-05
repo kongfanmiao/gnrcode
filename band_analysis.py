@@ -10,22 +10,8 @@ from .geometry import *
 from .tools import *
 from glob import glob
 from matplotlib.patches import Patch
+from typing import List, Tuple, Union, Dict
 
-
-# def find_fermi_energy(name, path):
-#     """
-#     Read Fermi energy from siesta .out file
-#     If the Hamiltonian is read from win file but not fdf file,
-#     The Fermi energy won't be shifted automatically.
-#     """
-#     file_path = os.path.join(path, name+'.out')
-#     with open(file_path) as fout:
-#         for line in fout:
-#             if "Fermi energy" in line:
-#                 fe_str = line.strip().split()[-2]
-#                 fe = float(fe_str)
-#     # print(f"Fermi energy is: {fe_str} eV")
-#     return fe
 
 
 def read_final_energy(name, path='./opt', which=None):
@@ -52,6 +38,74 @@ def read_final_energy(name, path='./opt', which=None):
         if len(retlist) == 1:
             retlist = retlist[0]
         return retlist
+
+def read_dushin_out(file_path='./dushin.out'):
+    """
+    Calculate Huang-Rhys factors from dushin output file
+    By default, the first state is ground state, the second one is excited state
+    """
+    results = {}
+    with open(file_path) as fout:
+        line = fout.readline()
+        while "Displacement" not in line:
+            line = fout.readline()
+        # Jump out from while loop after finding the word Displacement
+        line = fout.readline()
+        line = fout.readline()
+        G_freq = []
+        G_Q = []
+        G_lam = []
+        E_freq = []
+        E_Q = []
+        E_lam = []
+        while True:
+            l = line.strip().split()
+            if len(l) == 0:
+                break
+            G_freq.append(l[3])
+            G_Q.append(l[5])
+            G_lam.append(l[7])
+            E_freq.append(l[9])
+            E_Q.append(l[11])
+            E_lam.append(l[13])
+            line = fout.readline()
+        # Jump out from while loop if find blank line
+        G_freq = np.array(G_freq)
+        G_Q = np.array(G_Q)
+        G_lam = np.array(G_lam)
+        E_freq = np.array(E_freq)
+        E_Q = np.array(E_Q)
+        E_lam = np.array(E_lam)
+        G_hrf = G_lam*1.9863e-23/(G_freq*2.99792458e10*6.6260696e-34)
+        E_hrf = E_lam*1.9863e-23/(E_freq*2.99792458e10*6.6260696e-34)
+        results['G_freq'] = G_freq
+        results['G_Q'] = G_Q
+        results['G_lam'] = G_lam
+        results['E_freq'] = E_freq
+        results['E_Q'] = E_Q
+        results['E_lam'] = E_lam
+        results['G_hrf'] = G_hrf
+        results['E_hrf'] = E_hrf
+        while True:
+            line = fout.readline()
+            if " Summs projected onto state" in line:
+                # shouldn't be more than two blanks between works in the label
+                line = list(filter(None, line.strip().split('   ')))
+                info = "Ground state: {}, Excited state: {}".format(
+                    line[-2], line[-1])
+                results['info'] = info
+            if "total reorg energies in eV" in line:
+                line = list(filter(None, line.strip().split()))
+                results['tot_reorg'] = "Ground state: {} eV, Excited state: {} eV".format(
+                    line[-2], line[-1])
+            if "Huang-Rhys factor" in line:
+                line = list(filter(None, line.strip().split()))
+                results['tot_hrf'] = "Ground state: {}, Excited state: {}".format(
+                    line[-2], line[-1])
+                break # This is the last line to read
+    print(info)
+    return results  
+
 
 
 
@@ -84,16 +138,16 @@ def band_structure(H, name=None, path='./opt', Erange=[-3, 3], index=False, figs
     lk, kt, kl = bs.lineark(True)
     eigfile = os.path.join(path, f'{name}.eig.{tick_labels}{knpts}.txt')
     # try to read eigenvalues from file, if not exist then create one
-    try:
-        if tb:
-            raise NotImplementError
-        with open(eigfile) as f:
-            eigh = np.loadtxt(f)
-        assert len(eigh) != 0
-    except:
-        print(f'eig file {eigfile} not found or empty. Now calculate new eig')
+    if tb:
         eigh = bsar.eigh()
-        if not tb:
+    else:
+        try:
+            with open(eigfile) as f:
+                eigh = np.loadtxt(f)
+            assert len(eigh) != 0
+        except:
+            print(f'eig file {eigfile} not found or empty. Now calculate new eig')
+            eigh = bsar.eigh()
             with open(eigfile, 'w') as f:
                 np.savetxt(f, eigh)
     # Usually the eigenvalues are shifted to Fermi energy by sisl already
@@ -244,30 +298,33 @@ def unfold_band(H, lat_vec=1.0, Erange=None, kmesh=500, ky=0, marker_size: float
 
 
 @timer
-def band_gap(H, name, path='./opt'):
+def band_gap(H, name=None, path='./opt', tb=False):
 
+    rlv = np.int0(~(np.array(H.nsc) == 1))
+    bs = BandStructure(H, [[0,0,0], list(0.5*rlv), list(rlv)], 200, 
+        ['$\Gamma$', 'X', '$\Gamma$'])
+    bsar = bs.apply.array
     # try to read eigenvalues from file
-    try:
-        files = glob(os.path.join(path, f'{name}.eig*'))
-        assert len(files) != 0
-        # make sure the k path of eig file contains at least from Gamma to X
-        for file in files:
-            if ('GX' in file) or ('XG' in file):
-                eigfile = file 
-                break
-        # if eigfile doesn't exist it will call Name Error
-        with open(eigfile) as f:
-            eig = np.loadtxt(f)
-        assert len(eig) != 0
-    except:
-        print(f'eig file(s) not found or empty. Now calculate new eig')
-        # maybe FileNotFoundError, AssertionError, or NameError
-        eigfile = os.path.join(path, f'{name}.eig.GXG200.txt')
-        rlv = np.int0(~(np.array(H.nsc) == 1))
-        bs = BandStructure(H, [[0,0,0], list(0.5*rlv), list(rlv)], 200, 
-            ['$\Gamma$', 'X', '$\Gamma$'])
-        bsar = bs.apply.array
+    if tb:
         eig = bsar.eigh()
+    else:
+        try:
+            files = glob(os.path.join(path, f'{name}.eig*'))
+            assert len(files) != 0
+            # make sure the k path of eig file contains at least from Gamma to X
+            for file in files:
+                if ('GX' in file) or ('XG' in file):
+                    eigfile = file 
+                    break
+            # if eigfile doesn't exist it will call Name Error
+            with open(eigfile) as f:
+                eig = np.loadtxt(f)
+            assert len(eig) != 0
+        except:
+            # maybe NotImplementedError, FileNotFoundError, AssertionError, or NameError
+            print(f'eig file(s) not found or empty. Now calculate new eig')
+            eigfile = os.path.join(path, f'{name}.eig.GXG200.txt')
+            eig = bsar.eigh()
 
     bg = functools.reduce(lambda x, y: x if x <= y else y,
                           (ek[ek > 0].min() - ek[ek < 0].max() for ek in eig))
@@ -372,23 +429,21 @@ def dos(H, name=None, path='./opt', Erange=[-3, 3], figsize=(2,4), dE=0.01,
     mp1, mp2, mp3 = mpgrid
     dosfile = os.path.join(path,
         f'{name}.dos.{erangestr}.dE{dE}.broaden{gaussian_broadening}.mpgrid{mp1}_{mp2}_{mp3}.txt')
+    mp = MonkhorstPack(H, mpgrid)
+    dis = functools.partial(gaussian, sigma=gaussian_broadening)
+    mpav = mp.apply.average
+    if tb:
+        dos = mpav.DOS(E, distribution=dis)
     try:
-        if tb:
-            raise NotImplementedError
         with open(dosfile) as f:
             dos = np.loadtxt(f)
         assert len(dos) != 0
     except:
-        if not tb:
-            print(f'dos file {dosfile} not found or empty. Now calculate new dos')
-        mp = MonkhorstPack(H, mpgrid)
-        dis = functools.partial(gaussian, sigma=gaussian_broadening)
-        mpav = mp.apply.average
+        print(f'dos file {dosfile} not found or empty. Now calculate new dos')
         dos = mpav.DOS(E, distribution=dis)
         # write to file
-        if not tb:
-            with open(dosfile, 'w') as f:
-                np.savetxt(f, dos)
+        with open(dosfile, 'w') as f:
+            np.savetxt(f, dos)
 
     plt.figure(figsize=figsize)
     select_range = np.logical_and(E>=Erange[0], E<=Erange[-1])
