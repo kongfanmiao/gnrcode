@@ -192,12 +192,18 @@ def display(g, aid=False, sc=True, rotate=False, figsize=(10, 5), **kwargs):
         plt.ylim(minxyz[1]-2, maxxyz[1]+2)
 
 
-def slice_show(g, xlim=[0, 10], figsize=(8, 5)):
+def slice_show(g, xlim=[0, 10], ylim=None, figsize=(8, 5)):
     display(g, aid=False, sc=False, figsize=figsize)
     plt.xlim(*xlim)
+    if ylim:
+        plt.ylim(*ylim)
+    else:
+        ylim=[-1e3, 1e3]
     for i in g:
-        if xlim[0] < g.xyz[i, 0] < xlim[1]:
+        if (xlim[0] < g.xyz[i, 0] < xlim[1]) and (
+            ylim[0] < g.xyz[i, 1] < ylim[1]):
             plt.annotate(i, g.xyz[i, 0:2])
+
 
 
 def connect(g1, g2, a1, a2, bond=[1.42, 0, 0]):
