@@ -5,11 +5,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-
 def timer(func):
     """
     Print the elapsed time of running the decorated function.
     """
+
     @functools.wraps(func)
     def wrapper_timer(*args, **kwargs):
         start_time = time.perf_counter()
@@ -18,7 +18,9 @@ def timer(func):
         run_time = end_time - start_time
         print(f"Running {func.__name__} takes {run_time:.4f} seconds")
         return value
+
     return wrapper_timer
+
 
 # cast the hamiltonian copy into a function
 def copy_hamiltonian(H, shape=3):
@@ -43,13 +45,10 @@ def construct_hamiltonian(gnr):
 
     H = Hamiltonian(gnr)
     r = (0.1, 1.44)
-    t = (0., -2.7)
+    t = (0.0, -2.7)
     H.construct([r, t])
     print(H)
     return H
-
-
-
 
 
 def get_orb_list(geom):
@@ -64,22 +63,22 @@ def get_orb_list(geom):
         aidx_dict[a.symbol].append(geom.a2o(ia))
     oidx_dict = {}
     idx_dict = {}
-    orb_list = ['s', 'pxy', 'pz', 'd', 'f']
+    orb_list = ["s", "pxy", "pz", "d", "f"]
     for atom in geom.atoms.atom:
         a = atom.symbol
         oidx_dict[a] = dict(zip(orb_list, [[], [], [], [], []]))
         idx_dict[a] = dict(zip(orb_list, [[], [], [], [], []]))
         for i, orb in enumerate(atom):
             if orb.l == 0:
-                oidx_dict[a]['s'].append(i)
+                oidx_dict[a]["s"].append(i)
             elif orb.l == 1 and (orb.m in [-1, 1]):
-                oidx_dict[a]['pxy'].append(i)
+                oidx_dict[a]["pxy"].append(i)
             elif orb.l == 1 and orb.m == 0:
-                oidx_dict[a]['pz'].append(i)
+                oidx_dict[a]["pz"].append(i)
             elif orb.l == 2:
-                oidx_dict[a]['d'].append(i)
+                oidx_dict[a]["d"].append(i)
             elif orb.l == 3:
-                oidx_dict[a]['f'].append(i)
+                oidx_dict[a]["f"].append(i)
         for orb in orb_list:
             all_idx = np.add.outer(aidx_dict[a], oidx_dict[a][orb]).ravel()
             idx_dict[a][orb] = all_idx
@@ -112,15 +111,16 @@ def convert_formated_str_to_dict(s: str):
         Output: {'C': ['pz'],
                  'N': ['pxy']}
     """
-    sl = s.split(';')
+    sl = s.split(";")
     d = {}
     for i in sl:
-        k, v = i.split(':')
+        k, v = i.split(":")
         key, v = k.strip(), v.strip()
-        v = v.split(',')
+        v = v.split(",")
         value = [i.strip() for i in v]
         d[key] = value
     return d
+
 
 def list_str(l):
     """
@@ -129,7 +129,6 @@ def list_str(l):
     if len(l) <= 4:
         lnew = str(l)
     else:
-        lnew = '[' + ','.join((f"{l[0]},{l[1]}", '...',
-                               f"{l[-2]},{l[-1]}")) + ']'
+        lnew = "[" + ",".join((f"{l[0]},{l[1]}", "...", f"{l[-2]},{l[-1]}")) + "]"
 
     return lnew
