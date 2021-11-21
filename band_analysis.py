@@ -1,7 +1,9 @@
-from sisl import *
+import os
 import numpy as np
 import matplotlib.pyplot as plt
-import os
+from sisl import BandStructure, Hamiltonian, MonkhorstPack, Grid
+from sisl.physics import electron, gaussian
+from sisl.io import get_sile
 
 import functools
 from scipy.sparse import lil_matrix
@@ -12,6 +14,12 @@ from glob import glob
 from matplotlib.patches import Patch
 from typing import List, Tuple, Union, Dict
 
+kpoints_dict = {
+    "G": ("$\Gamma$", [0, 0, 0]),
+    "X": ("$X$", [0.5, 0., 0.]), 
+    "M": ("$M$", [0.5, 0.5, 0]),
+    "K": ("$K$", [2.0 / 3, 1.0 / 3, 0]),
+}
 
 def read_final_energy(name, path="./opt", which=None):
     outfile = name + ".out"
@@ -129,20 +137,12 @@ def band_structure(
     Arguments:
         tb: if in tight binding formalism
     """
-    # symbols of tick labels
-    rlv = np.int0(~(np.array(H.nsc) == 1))
-    labels_dict = {
-        "G": ("$\Gamma$", [0, 0, 0]),
-        "X": ("$X$", list(0.5 * rlv)),  # always put periodic direction in x
-        "M": ("$M$", [0.5, 0.5, 0]),
-        "K": ("$K$", [2.0 / 3, 1.0 / 3, 0]),
-    }
     tkls = list(tick_labels)
     # Position of ticks in Brillouin zone
     tks = []
     for i, v in enumerate(tick_labels):
-        tkls[i] = labels_dict[v][0]
-        tks.append(labels_dict[v][1])
+        tkls[i] = kpoints_dict[v][0]
+        tks.append(kpoints_dict[v][1])
 
     bs = BandStructure(H, tks, knpts, tkls)
     bsar = bs.apply.array
@@ -209,18 +209,12 @@ def interpolated_bs(
         fwin = get_sile(win_path)
         ham_int = fwin.read_hamiltonian()
 
-    labels_dict = {
-        "G": ("$\Gamma$", [0, 0, 0]),
-        "X": ("$X$", [0.5, 0, 0]),  # always put periodic direction in x
-        "M": ("$M$", [0.5, 0.5, 0]),
-        "K": ("$K$", [2.0 / 3, 1.0 / 3, 0]),
-    }
     tkls = list(tick_labels)
     tks = []
     # TO DO this is problematic for time reversal symmetry broken system
     for i, v in enumerate(tick_labels):
-        tkls[i] = labels_dict[v][0]
-        tks.append(labels_dict[v][1])
+        tkls[i] = kpoints_dict[v][0]
+        tks.append(kpoints_dict[v][1])
 
     if not overlap:
         knpts_int = 400
@@ -751,20 +745,13 @@ def fat_bands(
             be all the orbitals in projected_orbitals of each atoms in
             projected_atoms.
     """
-    # symbols of tick labels
-    rlv = np.int0(~(np.array(H.nsc) == 1))
-    labels_dict = {
-        "G": ("$\Gamma$", [0, 0, 0]),
-        "X": ("$X$", list(0.5 * rlv)),  # always put periodic direction in x
-        "M": ("$M$", [0.5, 0.5, 0]),
-        "K": ("$K$", [2.0 / 3, 1.0 / 3, 0]),
-    }
+
     # Position of ticks in Brillouin zone
     tks = []
     tkls = list(tick_labels)
     for i, v in enumerate(tick_labels):
-        tkls[i] = labels_dict[v][0]
-        tks.append(labels_dict[v][1])
+        tkls[i] = kpoints_dict[v][0]
+        tks.append(kpoints_dict[v][1])
     bs = BandStructure(H, tks, knpts, tkls)
     geom = H.geometry
     orb_idx_dict = get_orb_list(geom)
