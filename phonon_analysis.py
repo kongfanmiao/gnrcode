@@ -1,7 +1,7 @@
-from sisl import *
+import os
 import numpy as np
 import matplotlib.pyplot as plt
-import os
+from sisl.io import get_sile
 from .geometry import *
 from .tools import *
 import xarray
@@ -37,6 +37,7 @@ def plot_phonon_bands(
     figsize=(8, 6),
     ticks_font=12,
     label_font=12,
+    title=False,
     title_font=14,
     border_line_width=2,
     save=False,
@@ -57,7 +58,8 @@ def plot_phonon_bands(
         ax2: plot right axis in frequency (cm^-1) unit or not
     """
 
-    bands = read_phonon_bands(name=name, path=path, as_dataarray=True, squeeze=True)
+    bands = read_phonon_bands(name=name, path=path,
+                              as_dataarray=True, squeeze=True)
     # k points
     ks = bands.k.data
 
@@ -72,8 +74,10 @@ def plot_phonon_bands(
         emin, emax = -1e2, 1e6
     ax1.set_ylabel("Energy (meV)", fontsize=label_font)
     ax1.set_xticks(bands.ticks)
-    ax1.set_xticklabels(bands.ticklabels, fontsize=ticks_font)
+    ax1.set_xticklabels(bands.ticklabels)
     ax1.set_xlim(bands.ticks)
+    ax1.tick_params(axis='x', labelsize=ticks_font)
+    ax1.tick_params(axis='y', labelsize=ticks_font)
 
     # optional ax2 is in frequency (cm^-1) scale
     if ax2:
@@ -87,9 +91,9 @@ def plot_phonon_bands(
         # select the bands that are in the given energy window
         if np.any(np.logical_and(band > emin, band < emax)):
             ax1.plot(ks, band, color="k", **kwargs)
-
-    fig_title = "{}_PhononDispersion".format(name)
-    ax1.set_title(fig_title + "\n", fontsize=title_font)
+    if title:
+        fig_title = "{}_PhononDispersion".format(name)
+        ax1.set_title(fig_title + "\n", fontsize=title_font)
 
     # set border width
     for border in ["left", "bottom", "top", "right"]:
@@ -141,7 +145,8 @@ def write_GammaPhonon_xsf(
 
             with open(
                 os.path.join(
-                    path, "{}_GammaMode_{}_{:.2f}meV.xsf".format(name, band, enrg)
+                    path, "{}_GammaMode_{}_{:.2f}meV.xsf".format(
+                        name, band, enrg)
                 ),
                 "w",
             ) as xsf:
@@ -153,10 +158,12 @@ def write_GammaPhonon_xsf(
                 # write primitive cell
                 xsf.write("PRIMVEC\n")
                 for i in range(3):
-                    xsf.write("  {:.8f}  {:.8f}  {:.8f}\n".format(*geom.cell[i, :]))
+                    xsf.write("  {:.8f}  {:.8f}  {:.8f}\n".format(
+                        *geom.cell[i, :]))
                 xsf.write("CONVVEC\n")
                 for i in range(3):
-                    xsf.write("  {:.8f}  {:.8f}  {:.8f}\n".format(*geom.cell[i, :]))
+                    xsf.write("  {:.8f}  {:.8f}  {:.8f}\n".format(
+                        *geom.cell[i, :]))
                 xsf.write("PRIMCOORD\n")
                 xsf.write("  {}  {}\n".format(geom.na, num_of_cells))
                 # write coordinates and displacement vectors for each atoms
@@ -281,7 +288,8 @@ def fat_phonon_bands(
             left axis is in energy meV unit
     """
     # read phonon band data from name.bands file in phonon calculation directory
-    bands = read_phonon_bands(name=name, path=path, as_dataarray=True, squeeze=True)
+    bands = read_phonon_bands(name=name, path=path,
+                              as_dataarray=True, squeeze=True)
     # read all the phonon vectors
     ph_kpts, ph_enrgs, ph_vectors = read_phonon_vectors(
         geom=geom, name=name, path=path, first_band=first_band, last_band=last_band
@@ -292,7 +300,8 @@ def fat_phonon_bands(
     # modulus of phonon vectors of all atoms
     ph_mod_tot = np.linalg.norm(ph_vectors[:, :, :, :], axis=-1).sum(-1)
     # modulus of phonon vectors of selected to-be-projected atoms
-    ph_mod_proj = np.linalg.norm(ph_vectors[:, :, project_list, :], axis=-1).sum(-1)
+    ph_mod_proj = np.linalg.norm(
+        ph_vectors[:, :, project_list, :], axis=-1).sum(-1)
     ph_wt_proj = ph_mod_proj / ph_mod_tot
 
     fig = plt.figure(figsize=figsize)
@@ -330,7 +339,7 @@ def fat_phonon_bands(
     # set border width
     for border in ["left", "bottom", "top", "right"]:
         ax1.spines[border].set_linewidth(border_line_width)
-    
+
     # save the figure
     if save:
         enrg_str = "{}to{}meV".format(emin, emax) if Erange else "full_range"
