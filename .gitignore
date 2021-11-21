@@ -1,4 +1,5 @@
 __pycache__
+.vscode
 .ipynb_checkpoints
-changes_to_sisi.md
+changes_to_sisl.md
 nbmethods.ipynb
