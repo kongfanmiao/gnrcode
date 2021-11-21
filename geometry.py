@@ -1,7 +1,8 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from sisl import *
+import py3Dmol
+from sisl import Geometry, Atom, AtomicOrbital, plot
 
 
 def adjust_axes(
