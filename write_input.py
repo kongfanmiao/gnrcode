@@ -37,7 +37,9 @@ def create_siesta_runfile(
         num_bands_to_wannier_down=None,
         s2w_grid=[30, 30, 30],
         diag_algorithm="Divide-and-Conquer",
-        cdf=True
+        cdf=True,
+        mixer_weight=0.25,
+        mixer_history=6
 ):
     """
     Write Siesta input file
@@ -72,6 +74,8 @@ def create_siesta_runfile(
         diag_algorithm: By default it's Divide-and-Conquer. If job is to send to
             ARC, then use "expert" instead
         cdf: Use NetCDF utility or not
+        mixer_weight: SCF mixing weight
+        mixer_history: SCF mixer history
     """
     # Some other default parameters:
     #   PAO.BasisSize       DZP
@@ -96,6 +100,7 @@ def create_siesta_runfile(
         f.write("""%include {}
 SystemName              {}
 SystemLabel             {}
+
 ############################################
 #   Parameters
 ############################################
@@ -125,15 +130,15 @@ MD.UseSaveCG            T
 Diag.Algorithm          {}
 DM.UseSaveDM            T
 MaxSCFIterations        500
-SCF.Mixer.Weight        0.05
-SCF.Mixer.History       4
+SCF.Mixer.Weight        {}
+SCF.Mixer.History       {}
 
 ############################################
 #   Band Structures
 ############################################
 # BandLines_kpathScale  pi/a
 %block BandLines_kpath""".format(
-    struct_file, name, name, *mpgrid, diag_algorithm
+    struct_file, name, name, *mpgrid, diag_algorithm, mixer_weight, mixer_history
 ))
         for i, bdk in enumerate(bandlines_kpath):
             tmp = kpoints_dict[bdk]
