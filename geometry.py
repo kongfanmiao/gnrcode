@@ -221,6 +221,31 @@ def display(g, aid=False, sc=True, rotate=False, figsize=(10, 5), **kwargs):
         plt.ylim(minxyz[1] - 2, maxxyz[1] + 2)
 
 
+def SetView(xyzview, rotation, zoom):
+    xyzview.setStyle({'sphere': {'colorscheme': 'Jmol', 'scale': 0.3},
+                      'stick': {'colorscheme': 'Jmol', 'radius': 0.2}})
+    xyzview.rotate(rotation)
+    xyzview.zoomTo()
+    xyzview.zoom(zoom)
+    xyzview.show()
+
+
+
+def display3D(what, width=500, height=300, rotation=0, zoom=1):
+    if isinstance(what, str):
+        with open(what, 'r') as f:
+            xyzstr = f.read()
+    elif isinstance(what, Geometry):    
+        xyzstr = "{}\n\n".format(what.na)
+        xyz = what.xyz
+        xyzstr = xyzstr + '\n'.join(["{}\t{:.8f}\t{:.8f}\t{:.8f}".format(
+            a.tag, *xyz[ia]) for ia, a, _ in what.iter_species()])
+    xyzview = py3Dmol.view(width=width, height=height)
+    xyzview.addModel(xyzstr, 'xyz')
+    SetView(xyzview, rotation, zoom)
+
+
+
 def slice_show(g, xlim=[0, 10], ylim=None, figsize=(8, 5)):
     display(g, aid=False, sc=False, figsize=figsize)
     plt.xlim(*xlim)
