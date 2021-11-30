@@ -39,7 +39,8 @@ def create_siesta_runfile(
         diag_algorithm="Divide-and-Conquer",
         cdf=True,
         mixer_weight=0.25,
-        mixer_history=6
+        mixer_history=6,
+        variable_cell=True
 ):
     """
     Write Siesta input file
@@ -76,6 +77,7 @@ def create_siesta_runfile(
         cdf: Use NetCDF utility or not
         mixer_weight: SCF mixing weight
         mixer_history: SCF mixer history
+        variable_cell: Fix the cell during MD relaxation or not
     """
     # Some other default parameters:
     #   PAO.BasisSize       DZP
@@ -120,7 +122,7 @@ MD.TypeOfRun            CG  # coordinate optimization by conjugation gradient
 MD.Steps                1000
 MD.MaxDispl             0.05  Ang
 MD.MaxForceTol          0.01 eV/Ang
-MD.VariableCell         T   # cell may change during relaxation
+MD.VariableCell         {}
 MD.UseSaveXV            T
 MD.UseSaveCG            T
 
@@ -138,7 +140,8 @@ SCF.Mixer.History       {}
 ############################################
 # BandLines_kpathScale  pi/a
 %block BandLines_kpath""".format(
-    struct_file, name, name, *mpgrid, diag_algorithm, mixer_weight, mixer_history
+    struct_file, name, name, *mpgrid, variable_cell,
+    diag_algorithm, mixer_weight, mixer_history
 ))
         for i, bdk in enumerate(bandlines_kpath):
             tmp = kpoints_dict[bdk]
