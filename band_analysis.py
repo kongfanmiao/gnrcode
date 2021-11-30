@@ -53,7 +53,7 @@ def read_dushin_out(file_path="./dushin.out"):
     By default, the first state is ground state, the second one is excited state
     """
     results = {}
-    with open(file_path) as fout:
+    with open(file_path, encoding='ISO-8859–1') as fout:
         line = fout.readline()
         while "Displacement" not in line:
             line = fout.readline()
