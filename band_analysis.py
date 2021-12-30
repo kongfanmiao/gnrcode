@@ -1,4 +1,5 @@
 import os
+from matplotlib import lines
 import numpy as np
 import matplotlib.pyplot as plt
 from sisl import BandStructure, Hamiltonian, MonkhorstPack, Grid
@@ -130,12 +131,15 @@ def band_structure(
     shift=0.0,
     knpts=200,
     tb=False,
+    spin_polarized=False,
+    legend_position = [1.1,0.9],
     **kwargs,
 ):
 
     """
     Arguments:
         tb: if in tight binding formalism
+        spin_polarized: spin polarized mode or not
     """
     tkls = list(tick_labels)
     # Position of ticks in Brillouin zone
@@ -143,40 +147,77 @@ def band_structure(
     for i, v in enumerate(tick_labels):
         tkls[i] = kpoints_dict[v][0]
         tks.append(kpoints_dict[v][1])
-
-    bs = BandStructure(H, tks, knpts, tkls)
-    bsar = bs.apply.array
-    # linear k mesh, k ticks, k tick labels
-    lk, kt, kl = bs.lineark(True)
-    eigfile = os.path.join(path, f"{name}.eig.{tick_labels}{knpts}.txt")
+    
+    bsar = [] # BandStructure array object list
+    if spin_polarized:
+        # Define figure properties
+        label= ['spin up', 'spin down']
+        linestyle = ['-', '--']
+        color = ['r', 'b']
+        # Extract Hamiltonian matrix
+        csr_afm = [H.tocsr(dim=i) for i in range(H.dim)]
+        S_afm = csr_afm.pop()
+        H1 = Hamiltonian.fromsp(H, csr_afm[0], S_afm)
+        H2 = Hamiltonian.fromsp(H, csr_afm[1], S_afm)
+        name_up = name+'_up'
+        name_dn = name+'_dn'
+        # Get band structure data from Hamiltonian
+        bs1 = BandStructure(H1, tks, knpts, tkls)
+        bsar1 = bs1.apply.array
+        bsar.append(bsar1)
+        bs2 = BandStructure(H2, tks, knpts, tkls)
+        bsar2 = bs2.apply.array
+        bsar.append(bsar2)
+        # linear k mesh, k ticks, k tick labels
+        lk, kt, kl = bs1.lineark(True)
+        eigfile = [os.path.join(path, f'{n}.eig.{tick_labels}{knpts}.txt') for 
+            n in [name_up, name_dn]]
+    else:
+        label = [None]
+        linestyle = ['-']
+        color = [kwargs['color']] if 'color' in kwargs.keys() else [None]
+        bs = BandStructure(H, tks, knpts, tkls)
+        bsar.append(bs.apply.array)
+        # linear k mesh, k ticks, k tick labels
+        lk, kt, kl = bs.lineark(True)
+        eigfile = [os.path.join(path, f"{name}.eig.{tick_labels}{knpts}.txt")]
     # try to read eigenvalues from file, if not exist then create one
     if tb:
+        # Calculate eigenvalues directly if in tight binding mode
         eigh = bsar.eigh()
     else:
-        try:
-            with open(eigfile) as f:
-                eigh = np.loadtxt(f)
-            assert len(eigh) != 0
-        except:
-            print(f"eig file {eigfile} not found or empty. Now calculate new eig")
-            eigh = bsar.eigh()
-            with open(eigfile, "w") as f:
-                np.savetxt(f, eigh)
-    # Usually the eigenvalues are shifted to Fermi energy by sisl already
-    eigh += shift
+        eigh = []
+        for i in range(len(bsar)):
+            try:
+                with open(eigfile[i]) as f:
+                    eig = np.loadtxt(f)
+                assert len(eig) != 0
+            except:
+                print(f"eig file {eigfile[i]} not found or empty. Now calculate new eig")
+                eig = bsar[i].eigh()
+                # Usually the eigenvalues are shifted to Fermi energy by sisl already
+                eig += shift
+                with open(eigfile[i], "w") as f:
+                    np.savetxt(f, eig)
+            eigh.append(eig)
 
     plt.figure(figsize=figsize)
     plt.xticks(kt, kl)
     plt.ylim(Erange[0], Erange[-1])
     plt.xlim(0, lk[-1])
     plt.ylabel("$E-E_F$ (eV)")
+    for i, e in enumerate(eigh):
+        for j, ek in enumerate(e.T):
+            lb = label[i] if j==0 else None
+            plt.plot(lk, ek, linestyle=linestyle[i], color=color[i], 
+                label=lb)
+            # mark the band index
+            if index:
+                if Erange[0] < ek[-1] < Erange[1]:
+                    plt.annotate(j + 1, (lk[-1], ek[0]))
+    if spin_polarized:
+        plt.legend(bbox_to_anchor=legend_position)
 
-    for i, ek in enumerate(eigh.T):
-        plt.plot(lk, ek, **kwargs)
-        # mark the band index
-        if index:
-            if Erange[0] < ek[-1] < Erange[1]:
-                plt.annotate(i + 1, (lk[-1], ek[0]))
 
 
 @timer
