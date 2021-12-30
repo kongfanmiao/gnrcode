@@ -156,7 +156,7 @@ WriteBands              T   # Write .bands file
 ############################################
 #   Output Settings
 ############################################
-COOP.write              T   # Crystal-Orbital Overlap, write 
+COOP.write              F   # Crystal-Orbital Overlap, write 
                             # SystemLabel.fullBZ.WFSX and SystemLabel.HSX file
 WriteMullikenPop        1   # Write atomic and orbital charges
 WriteEigenvalues        T   # Write eigenvalues for sampling k points
@@ -168,6 +168,8 @@ WriteMDXmol             F   # Write .ANI file readable by XMoL for animation of 
             f.write("""
 CDF.Save                T
 CDF.Compress            3
+WFS.Energy.Min          -30 eV
+WFS.Energy.Max          30 eV
 """)
 #------------------------------------------------------------------------------#
         # write spin settings, by default spin unpolarized
@@ -194,7 +196,7 @@ Spin.OrbitStrength          {soc_strength}
 #------------------------------------------------------------------------------#
         # use DENCHAR program to plot wavefunction
         if denchar:
-            denchar_file_name = name + ".denchar_input.fdf"
+            denchar_file_name = name + ".denchar.fdf"
             f.write(f"""
 ############################################
 #   Use Utility Program DENCHAR
@@ -218,7 +220,7 @@ WriteWaveFunctions      T
                 if not isinstance(kpt, list):
                     raise TypeError(
                         "The k points list should be a list of lists")
-                f.write("\n {} {} {} from {} to {}".format(
+                f.write("\n {:5f} {:5f} {:5f} from {} to {}".format(
                     *kpt, *wfs_bands_range))
             f.write("""
 %endblock WaveFuncKPoints
@@ -231,6 +233,7 @@ WriteWaveFunctions      T
 ############################################
 #   Write Wavefunctions for Bands
 ############################################
+WriteWaveFunctions      T
 WFS.Write.For.Bands     T
 WFS.Band.Min            {}
 WFS.Band.Max            {}
@@ -244,7 +247,7 @@ WFS.Band.Max            {}
 #   Electric Field
 ############################################
 %block ExternalElectricField
-    {:.3f}  {:.3f}  {:.3f}  V/Ang
+    {:.5f}  {:.5f}  {:.5f}  V/Ang
 %endblock ExternalElectricField
 SlabDipoleCorrection    {}
 """.format(*E_field, slab_dipole_correction))
@@ -274,7 +277,7 @@ Siesta2Wannier90.WriteUnk       true
 Siesta2Wannier90.UnkGridBinary  true
 Siesta2Wannier90.UnkGrid1       {}
 Siesta2Wannier90.UnkGrid2       {}
-Siesta2Wannier90.UnkGrid3       {}""").format(*s2w_grid)
+Siesta2Wannier90.UnkGrid3       {}""".format(*s2w_grid))
             if spin_mode == "non-polarized":
                 # NumberOfBands is by default all occupied bands
                 if num_bands_to_wannier:
@@ -385,29 +388,33 @@ Optical.PolarizationType   {polarization_type}
 %endblock Optical.Vector""")
 
 
-def write_denchar_input_file(
+def write_denchar_file(
         geom: Geometry, name, path='./opt',
         type_of_run='3D',
         plot_charge=True,
         plot_wavefunctions=True,
-        coor_units='Ang'
+        coor_units='Ang',
+        box_size=[40,10,10],
+        mesh_grid=4
 ):
     """
-    Write SystemLabel.denchar_input.fdf file for density charge calculation, to be 
+    Write SystemLabel.denchar.fdf file for density charge calculation, to be 
     consumed by denchar program
     """
-    filename = name + '.denchar_input.fdf'
+    filename = name + '.denchar.fdf'
     filepath = os.path.join(path, filename)
     num_sp = len(geom.atoms.atom)
     xyz = geom.xyz
     xmax, ymax, zmax = np.max(xyz, axis=0)-geom.center()  # *1.88973
-    xmax += 20
-    ymax += 5
-    zmax += 3
+    xlen, ylen, zlen = box_size
+    xnpts, ynpts, znpts = np.around(np.array(box_size)*mesh_grid, dtype=np.int32)
+    xmax += xlen/2
+    ymax += ylen/2
+    zmax += zlen/2
     xmin, ymin, zmin = np.min(xyz, axis=0)-geom.center()  # *1.88973
-    xmin -= 20
-    ymin -= 5
-    zmin -= 3
+    xmin -= xlen/2
+    ymin -= ylen/2
+    zmin -= zlen/2
     center = geom.center()
     xaxis = center + np.array([3, 0, 0])
 
@@ -429,22 +436,25 @@ Denchar.PlotWaveFunctions   {plot_wavefunctions}
 Denchar.CoorUnits       {coor_units}""")
         f.write("""
 %block Denchar.PlaneOrigin
- {} {} {}
+ {:.8f} {:.8f} {:.8f}
 %endblock Denchar.PlaneOrigin
 """.format(*center))
         f.write("""
 %block Denchar.X-Axis
- {} {} {}
+ {:.8f} {:.8f} {:.8f}
 %endblock Denchar.X-Axis
 """.format(*xaxis))
-        f.write("""
-Denchar.MaxX            {} Ang
-Denchar.MaxY            {} Ang
-Denchar.MaxZ            {} Ang
-Denchar.MinX            {} Ang
-Denchar.MinY            {} Ang
-Denchar.MinZ            {} Ang
-""".format(xmax, ymax, zmax, xmin, ymin, zmin))
+        f.write(f"""
+Denchar.MaxX            {xmax:.8f} Ang
+Denchar.MaxY            {ymax:.8f} Ang
+Denchar.MaxZ            {zmax:.8f} Ang
+Denchar.MinX            {xmin:.8f} Ang
+Denchar.MinY            {ymin:.8f} Ang
+Denchar.MinZ            {zmin:.8f} Ang
+Denchar.NumberPointsX   {xnpts:1d}
+Denchar.NumberPointsY   {ynpts:1d}
+Denchar.NumberPointsZ   {znpts:1d}
+""")
 
 
 
@@ -491,10 +501,7 @@ def create_win_file(
     if not num_wann:
         # this only works for DZP basis set
         num_wann = int(len(C_atoms)/2)
-    if not num_ex_bands:
-        # this only works for DZP basis set
-        num_ex_bands = int(len(C_atoms)/2)
-    num_bands = tot_num_bands - num_ex_bands
+    num_bands = tot_num_bands - num_ex_bands if num_ex_bands else tot_num_bands
 
     # proj_orb = ''
     # for i in range(num_wann):
