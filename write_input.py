@@ -131,6 +131,7 @@ MD.UseSaveCG            T
 ############################################
 Diag.Algorithm          {}
 DM.UseSaveDM            T
+DM.History.Depth        6
 MaxSCFIterations        500
 SCF.Mixer.Weight        {}
 SCF.Mixer.History       {}
@@ -140,9 +141,9 @@ SCF.Mixer.History       {}
 ############################################
 # BandLines_kpathScale  pi/a
 %block BandLines_kpath""".format(
-    struct_file, name, name, *mpgrid, variable_cell,
-    diag_algorithm, mixer_weight, mixer_history
-))
+            struct_file, name, name, *mpgrid, variable_cell,
+            diag_algorithm, mixer_weight, mixer_history
+        ))
         for i, bdk in enumerate(bandlines_kpath):
             tmp = kpoints_dict[bdk]
             kpt = 1 if i == 0 else int(bandlines_nkpts*np.linalg.norm(
@@ -294,7 +295,6 @@ Siesta2Wannier90.NumberOfBandsDown  {int(num_bands_to_wannier_down)}
                     pass
 
 
-
 def write_struct_fdf(
         geom: Geometry, name: str, path="./opt",
         lattice_constant=1.0,
@@ -394,7 +394,7 @@ def write_denchar_file(
         plot_charge=True,
         plot_wavefunctions=True,
         coor_units='Ang',
-        box_size=[40,10,10],
+        num_unit_cells=2,
         mesh_grid=4
 ):
     """
@@ -405,18 +405,17 @@ def write_denchar_file(
     filepath = os.path.join(path, filename)
     num_sp = len(geom.atoms.atom)
     xyz = geom.xyz
-    xmax, ymax, zmax = np.max(xyz, axis=0)-geom.center()  # *1.88973
-    xlen, ylen, zlen = box_size
-    xnpts, ynpts, znpts = np.around(np.array(box_size)*mesh_grid, dtype=np.int32)
-    xmax += xlen/2
-    ymax += ylen/2
-    zmax += zlen/2
-    xmin, ymin, zmin = np.min(xyz, axis=0)-geom.center()  # *1.88973
-    xmin -= xlen/2
-    ymin -= ylen/2
-    zmin -= zlen/2
+    cell = geom.cell
+    geom_size = np.max(xyz, axis=0) - np.min(xyz, axis=0)
+    ymin, zmin = -geom_size[1:]/2
+    ymax, zmax = geom_size[1:]/2
+    xmin = -cell[0, 0]/2
+    xmax = 3*cell[0, 0]/2
+    xnpts, ynpts, znpts = np.around(np.array(
+        [xmax-xmin, ymax-ymin, zmax-zmin]
+    )*mesh_grid).astype(int)
     center = geom.center()
-    xaxis = center + np.array([3, 0, 0])
+    xaxis = center + np.array([5, 0, 0])
 
     with open(filepath, 'w') as f:
         f.write(f"""
@@ -457,7 +456,6 @@ Denchar.NumberPointsZ   {znpts:1d}
 """)
 
 
-
 def create_win_file(
         geom: Geometry, name, path="./s2w",
         tot_num_bands=None,
@@ -471,7 +469,7 @@ def create_win_file(
         dis_froz_min=None,
         kpoints_path="GXG",
         guiding_centres=False,
-        wa_plot_sc=[3,1,1],
+        wa_plot_sc=[3, 1, 1],
         kmesh_tol=0.0001
 ):
     """
@@ -562,7 +560,7 @@ end unit_cell_cart
 begin kpoint_path""")
         # write k points path
         for i in range(len(kpoints_path)-1):
-            tmp_str = "\n"+(" {}" +" {:.5f}"*3)*2
+            tmp_str = "\n"+(" {}" + " {:.5f}"*3)*2
             k0, k1 = kpoints_path[i:i+2]
             f.write(tmp_str.format(
                 k0, *kpoints_dict[k0][1], k1, *kpoints_dict[k1][1]))
@@ -585,8 +583,6 @@ Ang""")
                 geom.atoms[i].symbol, *geom.xyz[i]))
         f.write("""
 end atoms_cart""")
-
-
 
 
 def create_wannier90insiesta_runfile(name: str):
@@ -631,11 +627,10 @@ Wannier90_in_SIESTA_compute_unk .true.
 """)
 
 
-
 def create_fcbuild_file(
         geom: Geometry, name: str, path='./phonon',
-        mpgrid=[21,1,1],
-        supercell=[1,0,0],
+        mpgrid=[21, 1, 1],
+        supercell=[1, 0, 0],
         mesh_cutoff=400,
         bandlines_kpath='GX',
         bandlines_nkpts=200,
@@ -684,7 +679,7 @@ SuperCell_3          {}
 
 BandLines_kpathScale       pi/a
 %block BandLines_kpath""".format(
-    name, name, geom.atoms.nspecie, geom.na, *mpgrid, mesh_cutoff, *supercell))
+            name, name, geom.atoms.nspecie, geom.na, *mpgrid, mesh_cutoff, *supercell))
         for i, bdk in enumerate(bandlines_kpath):
             tmp = kpoints_dict[bdk]
             kpt = 1 if i == 0 else int(bandlines_nkpts*np.linalg.norm(
@@ -717,10 +712,9 @@ AtomicCoordinatesFormat NotScaledCartesianAng
 """)
 
 
-
 def create_ifc_file(
         geom: Geometry, name: str, path='./phonon',
-        mpgrid=[21,1,1],
+        mpgrid=[21, 1, 1],
         mesh_cutoff=400
 ):
     """
@@ -745,8 +739,8 @@ MeshCutoff           {} Ry
 %endblock kgrid_Monkhorst_Pack
 
 %block ChemicalSpeciesLabel""".format(
-    name, name, geom.atoms.nspecie, *mpgrid, mesh_cutoff
-))
+            name, name, geom.atoms.nspecie, *mpgrid, mesh_cutoff
+        ))
         for i, a in enumerate(geom.atoms.atom):
             f.write(f"\n{i+1}\t{a.Z}\t{a.symbol}")
         f.write("""
@@ -768,3 +762,28 @@ MD.FCdispl      < FC.fdf   # Displacement to use for the computation of the
                            # finite difference derivative of the forces)
 """)
 
+
+def write_xcrysden_shell_script(
+        path,
+        keyword,
+        file_format="cube",
+        bash_file="export_xcrysden.sh",
+        xcrysden_state_file="state_real.xcrysden"):
+    """
+    Write shell script to run XCrySDen automatically.
+    The xcrysden state file should be named as state.xcrysden
+    """
+
+    file_path = os.path.join(path, bash_file)
+    with open(file_path, 'w') as f:
+        f.write(f"""
+for input in `ls {keyword}`; do
+    cp {xcrysden_state_file} tmp.xcrysden
+    filename="${{input%.*}}.png"
+    echo "
+scripting::printToFile $filename windowdump
+exit 0" >> tmp.xcrysden;
+    xcrysden --{file_format} $input --script tmp.xcrysden;
+    rm -f tmp.xcrysden;
+done
+""")
