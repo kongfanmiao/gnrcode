@@ -197,7 +197,7 @@ def move_to_zcenter(g, plot_geom=True):
     return gz
 
 
-def display(g, aid=False, sc=True, rotate=False, figsize=(10, 5), **kwargs):
+def display2D(g, aid=False, sc=True, rotate=False, figsize=(10, 5), **kwargs):
 
     xyz = g.xyz
     minxyz = np.amin(xyz, 0)
@@ -247,7 +247,7 @@ def display3D(what, width=500, height=300, rotation=0, zoom=1):
 
 
 def slice_show(g, xlim=[0, 10], ylim=None, figsize=(8, 5)):
-    display(g, aid=False, sc=False, figsize=figsize)
+    display2D(g, aid=False, sc=False, figsize=figsize)
     plt.xlim(*xlim)
     if ylim:
         plt.ylim(*ylim)
