@@ -410,7 +410,7 @@ def write_denchar_file(
     ymin, zmin = -geom_size[1:]/2
     ymax, zmax = geom_size[1:]/2
     xmin = -cell[0, 0]/2
-    xmax = 3*cell[0, 0]/2
+    xmax = num_unit_cells*cell[0, 0]+xmin
     xnpts, ynpts, znpts = np.around(np.array(
         [xmax-xmin, ymax-ymin, zmax-zmin]
     )*mesh_grid).astype(int)
