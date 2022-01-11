@@ -182,11 +182,11 @@ def band_structure(
         lk, kt, kl = bs.lineark(True)
         eigfile = [os.path.join(path, f"{name}.eig.{tick_labels}{knpts}.txt")]
     # try to read eigenvalues from file, if not exist then create one
+    eigh = []
     if tb:
         # Calculate eigenvalues directly if in tight binding mode
-        eigh = bsar.eigh()
+        eigh.append(bsar[0].eigh())
     else:
-        eigh = []
         for i in range(len(bsar)):
             try:
                 with open(eigfile[i]) as f:
