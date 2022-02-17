@@ -119,6 +119,17 @@ def read_dushin_out(file_path="./dushin.out"):
     return results
 
 
+def get_Hamiltonian_with_spin(H):
+    """
+    EXtract the spin up and down part of the Hamiltonian
+    """
+    csr_afm = [H.tocsr(dim=i) for i in range(H.dim)]
+    S_afm = csr_afm.pop()
+    H1 = Hamiltonian.fromsp(H, csr_afm[0], S_afm)
+    H2 = Hamiltonian.fromsp(H, csr_afm[1], S_afm)
+    return H1, H2
+
+
 @timer
 def band_structure(
     H,
@@ -155,10 +166,7 @@ def band_structure(
         linestyle = ['-', '--']
         color = ['r', 'b']
         # Extract Hamiltonian matrix
-        csr_afm = [H.tocsr(dim=i) for i in range(H.dim)]
-        S_afm = csr_afm.pop()
-        H1 = Hamiltonian.fromsp(H, csr_afm[0], S_afm)
-        H2 = Hamiltonian.fromsp(H, csr_afm[1], S_afm)
+        H1, H2 = get_Hamiltonian_with_spin(H)
         name_up = name+'_up'
         name_dn = name+'_dn'
         # Get band structure data from Hamiltonian
