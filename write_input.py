@@ -37,6 +37,7 @@ def create_siesta_runfile(
         num_bands_to_wannier_down=None,
         s2w_grid=[30, 30, 30],
         diag_algorithm="Divide-and-Conquer",
+        num_eigenstates=None,
         cdf=True,
         mixer_weight=0.25,
         mixer_history=6,
@@ -130,7 +131,14 @@ MD.UseSaveCG            T
 #   SCF
 ############################################
 Diag.Algorithm          {}
-DM.UseSaveDM            T
+""".format(struct_file, name, name, *mpgrid, variable_cell,
+            diag_algorithm))
+        if num_eigenstates:
+            # Only use this argument when diagonalization algorithm is
+            # MRRR, ELPA, or Expert
+            f.write("""NumberOfEigenStates     {}
+""".format(num_eigenstates))
+        f.write("""DM.UseSaveDM            T
 DM.History.Depth        6
 MaxSCFIterations        500
 SCF.Mixer.Weight        {}
@@ -140,9 +148,7 @@ SCF.Mixer.History       {}
 #   Band Structures
 ############################################
 # BandLines_kpathScale  pi/a
-%block BandLines_kpath""".format(
-            struct_file, name, name, *mpgrid, variable_cell,
-            diag_algorithm, mixer_weight, mixer_history
+%block BandLines_kpath""".format(mixer_weight, mixer_history
         ))
         for i, bdk in enumerate(bandlines_kpath):
             tmp = kpoints_dict[bdk]
@@ -404,17 +410,22 @@ def write_denchar_file(
     filename = name + '.denchar.fdf'
     filepath = os.path.join(path, filename)
     num_sp = len(geom.atoms.atom)
-    xyz = geom.xyz
-    cell = geom.cell
-    geom_size = np.max(xyz, axis=0) - np.min(xyz, axis=0)
-    ymin, zmin = -geom_size[1:]/2
-    ymax, zmax = geom_size[1:]/2
-    xmin = -cell[0, 0]/2
-    xmax = num_unit_cells*cell[0, 0]+xmin
+    gTmp = geom.tile(num_unit_cells,0)
+    xyz = gTmp.xyz
+    cell = gTmp.cell
+    center = gTmp.center()
+    xmax, ymax, zmax = np.max(xyz, axis=0) - center
+    xmin, ymin, zmin = np.min(xyz, axis=0) - center
+    # denchar will multiple these numbers by 1.1
+    xmax += 1
+    xmin -= 1
+    ymin -= 5
+    ymax += 5
+    zmin -= 5
+    zmax += 5
     xnpts, ynpts, znpts = np.around(np.array(
         [xmax-xmin, ymax-ymin, zmax-zmin]
     )*mesh_grid).astype(int)
-    center = geom.center()
     xaxis = center + np.array([5, 0, 0])
 
     with open(filepath, 'w') as f:
@@ -444,16 +455,18 @@ Denchar.CoorUnits       {coor_units}""")
 %endblock Denchar.X-Axis
 """.format(*xaxis))
         f.write(f"""
-Denchar.MaxX            {xmax:.8f} Ang
-Denchar.MaxY            {ymax:.8f} Ang
-Denchar.MaxZ            {zmax:.8f} Ang
 Denchar.MinX            {xmin:.8f} Ang
+Denchar.MaxX            {xmax:.8f} Ang
 Denchar.MinY            {ymin:.8f} Ang
+Denchar.MaxY            {ymax:.8f} Ang
 Denchar.MinZ            {zmin:.8f} Ang
+Denchar.MaxZ            {zmax:.8f} Ang
 Denchar.NumberPointsX   {xnpts:1d}
 Denchar.NumberPointsY   {ynpts:1d}
 Denchar.NumberPointsZ   {znpts:1d}
 """)
+
+
 
 
 def create_win_file(
