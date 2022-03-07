@@ -605,7 +605,7 @@ def pdos(
                 pdos_dict[a] = {}
             pdos_dict[a][orb] = pdos_dict_comp[key]
     except:
-        print(f"pdos file {pdosfile} not found or empty. Now calculate new pdos")
+        print(f"pdos file {pdosfile} not found or empty. Calculating new pdos")
         geom = H.geometry
         mp = MonkhorstPack(H, mpgrid)
         mpav = mp.apply.average
@@ -673,7 +673,7 @@ def pdos(
     for a, pd_a in pdos_dict.items():
         io = 0  # index of orbitals, for colors
         # choose atoms
-        if not ((a in projected_atoms) or projected_atoms == "all"):
+        if a not in projected_atoms and projected_atoms != "all":
             ia += 1
             continue
         for orb, pd_o in pd_a.items():
@@ -1446,6 +1446,42 @@ def plot_zak_polar(zdict):
         )
         # plt.text(rho, r, str(i), color="red", fontsize=10)
         plt.legend(bbox_to_anchor=[1.2, 0.9])
+
+
+@timer
+def Z2(H, num_bands=None):
+    "Sometimes not correct, not sure why."
+    # reverse idx order list
+    geom = H.geometry
+    idx_rev = []
+    center = geom.center()
+    for ia in geom:
+        xyzia = geom.xyz[ia]
+        xyzia_rev = center*2 - xyzia
+        idx = geom.close(xyzia_rev, R=0.1)
+        idx_rev.append(idx[0])
+
+    if not num_bands:
+        e0 = H.eigh()
+        occ = e0[e0<0].size
+    k = [[0,0,0], [0.5,0,0]]
+    res = 1
+    for _k in k:
+        bands = [i for i in range(occ)]
+        states = H.eigenstate(k=_k, gauge='R').sub(bands).state
+        states_rev = states[:,idx_rev]
+        # np.inner(a, a) = a times a.T 
+        par_mat = np.inner(np.conj(states), states_rev)
+        det = np.linalg.det(par_mat)
+        res *= det
+    res = np.around(res)
+    if res == -1:
+        _Z2 = 1
+    elif res == 1:
+        _Z2 = 0
+    return _Z2
+
+
 
 
 def plot_wannier_centers(

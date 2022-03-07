@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 import os
 from .geometry import *
 from .tools import *
+from datetime import datetime
+
+KFM = "Fanmiao Kong"
 
 
 kpoints_dict = {
@@ -13,8 +16,14 @@ kpoints_dict = {
     "K": ("$K$", [2.0 / 3, 1.0 / 3, 0.]),
 }
 
+def get_datetime():
+    # dd/mm/YY H:M:S
+    now = datetime.now()
+    dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+    return dt_string
 
-def create_siesta_runfile(
+
+def write_siesta_runfile(
         geom: Geometry, name: str, path="./opt",
         mpgrid=[21, 1, 1],
         bandlines_kpath='GXG',
@@ -100,7 +109,9 @@ def create_siesta_runfile(
             raise ValueError(f"Dont't Work in directory ./opt for {calc_type}")
 
     with open(os.path.join(path, run_file), 'w') as f:
-        f.write("""%include {}
+        f.write(f"# {KFM} created at {get_datetime()}\n")
+        f.write("""
+%include {}
 SystemName              {}
 SystemLabel             {}
 
@@ -323,7 +334,9 @@ def write_struct_fdf(
     num_sp = len(geom.atoms.atom)
 
     with open(os.path.join(path, struct_file), 'w') as f:
-        f.write(f"""LatticeConstant     {lat_con} {unit}
+        f.write(f"# {KFM} created at {get_datetime()}\n")
+        f.write(f"""
+LatticeConstant     {lat_con} {unit}
 %block LatticeVectors""")
         for v in cell:
             f.write(str('\n'+f' {{:{fmt}}}'*3).format(
@@ -371,6 +384,7 @@ def write_optical_calc_fdf(
 #     broaden *= constant
 #     scissor *= constant
     with open(filepath, 'w') as f:
+        f.write(f"# {KFM} created at {get_datetime()}\n")
         f.write(f"""
 OpticalCalculation      True
 Optical.Energy.Minumum  {emin} eV
@@ -429,6 +443,7 @@ def write_denchar_file(
     xaxis = center + np.array([5, 0, 0])
 
     with open(filepath, 'w') as f:
+        f.write(f"# {KFM} created at {get_datetime()}\n")
         f.write(f"""
 SystemLabel             {name}
 NumberOfSpecies         {num_sp}
@@ -467,9 +482,7 @@ Denchar.NumberPointsZ   {znpts:1d}
 """)
 
 
-
-
-def create_win_file(
+def write_win_file(
         geom: Geometry, name, path="./s2w",
         tot_num_bands=None,
         num_ex_bands=None,
@@ -483,7 +496,8 @@ def create_win_file(
         kpoints_path="GXG",
         guiding_centres=False,
         wa_plot_sc=[3, 1, 1],
-        kmesh_tol=0.0001
+        kmesh_tol=0.0001,
+        search_shells=36
 ):
     """
     Write input file for Wannier90 calculation
@@ -519,12 +533,8 @@ def create_win_file(
     #     proj_orb += f'{2*i+1} '
     proj_orb_idx = f'1-{num_wann}'
 
-    if not dis_win_min:
-        dis_win_min = -30
-    if not dis_win_max:
-        dis_win_max = 0
-
     with open(os.path.join(path, f"{name}.win"), 'w') as f:
+        f.write(f"! {KFM} created at {get_datetime()}\n")
         f.write(f"""
 num_bands   =   {num_bands}
 num_wann    =   {num_wann}""")
@@ -547,6 +557,7 @@ begin projections""")
         f.write("""
 end projections
 
+search_shells = {}
 num_iter	=	500
 write_hr	=	true
 write_tb	=	true
@@ -563,7 +574,7 @@ wannier_plot_supercell  =  {}, {}, {}
 kmesh_tol = {}
 
 begin unit_cell_cart
-Ang""".format(guiding_centres, *wa_plot_sc, kmesh_tol))
+Ang""".format(search_shells, guiding_centres, *wa_plot_sc, kmesh_tol))
         # write unit cell
         for i in range(len(geom.cell)):
             f.write("\n  {:.10f}\t{:.10f}\t{:.10f}".format(*geom.cell[i]))
@@ -592,13 +603,15 @@ begin atoms_cart
 Ang""")
         # write atom coordinates
         for i in range(len(geom.xyz)):
-            f.write("{}\t{:.10f}\t{:.10f}\t{:.10f}\n".format(
+            f.write("\n{}\t{:.10f}\t{:.10f}\t{:.10f}".format(
                 geom.atoms[i].symbol, *geom.xyz[i]))
         f.write("""
 end atoms_cart""")
 
 
-def create_wannier90insiesta_runfile(name: str):
+
+
+def write_wannier90insiesta_runfile(name: str):
     """
     This is only a sample. values are not parameterized.
     """
@@ -607,6 +620,7 @@ def create_wannier90insiesta_runfile(name: str):
     struct_file = name + 'STRUCT.fdf'
 
     with open(f'./wins/{run_file}', 'a') as f:
+        f.write(f"# {KFM} created at {get_datetime()}\n")
         f.write(f"""
 ############################################
 # Interface with Wannier90
@@ -640,7 +654,7 @@ Wannier90_in_SIESTA_compute_unk .true.
 """)
 
 
-def create_fcbuild_file(
+def write_fcbuild_file(
         geom: Geometry, name: str, path='./phonon',
         mpgrid=[21, 1, 1],
         supercell=[1, 0, 0],
@@ -670,6 +684,7 @@ def create_fcbuild_file(
     cellfrac = geom.cell/lc
 
     with open(os.path.join(path, fcbuild_file), 'w') as f:
+        f.write(f"# {KFM} created at {get_datetime()}\n")
         f.write("""
 SystemName           {}
 SystemLabel          {}
@@ -725,7 +740,7 @@ AtomicCoordinatesFormat NotScaledCartesianAng
 """)
 
 
-def create_ifc_file(
+def write_ifc_file(
         geom: Geometry, name: str, path='./phonon',
         mpgrid=[21, 1, 1],
         mesh_cutoff=400
@@ -736,6 +751,7 @@ def create_ifc_file(
 
     ifc_file = name + '.ifc.fdf'
     with open(os.path.join(path, {ifc_file}), 'w') as f:
+        f.write(f"# {KFM} created at {get_datetime()}\n")
         f.write("""
 SystemName           {}
 SystemLabel          {}
