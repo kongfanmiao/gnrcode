@@ -27,6 +27,7 @@ def read_phonon_bands(
         bands.ticklabels[0] = "$\Gamma$"
     if bands.ticklabels[1] == "X":
         bands.ticklabels[1] = "$X$"
+    bands.k.data[:] *= 1.8897259886
     return bands
 
 
@@ -239,6 +240,7 @@ def read_phonon_vectors(
                 enrgs.append(enrg_k)
                 vectors.append(vectors_k)
     kpts = np.array(kpts)
+    kpts[:] *= 1.8897259886 # convert to Ang^-1
     enrgs = np.array(enrgs)
     vectors = np.array(vectors)
     return kpts, enrgs, vectors
