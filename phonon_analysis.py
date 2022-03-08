@@ -31,6 +31,76 @@ def read_phonon_bands(
     return bands
 
 
+def read_phonon_vectors(
+    geom, name, first_band: int, last_band: int, path="./phonon"
+) -> np.ndarray:
+    """
+    Read the phonon eigenvectors from name.vectors file. By default read the
+    vectors for all k points and selected bands.
+    Arguments:
+        first_band: first band to read
+        last_band: last band to read
+    """
+    # empty list to store all the vectors
+    vectors = []
+    vec_path = os.path.join(path, f"{name}.vectors")
+    # empty list to store all k points
+    kpts = []
+    # empty list to store all energy values (in meV)
+    enrgs = []
+    # indicator of number of empty lines. If more than 2 empty lines then it marks
+    # the end of file
+    emp = 0
+    with open(vec_path, "r") as vf:
+        # keep reading the file until the end
+        while emp < 3:
+            line = vf.readline()
+            if len(line) == 0:
+                emp += 1
+            # If find 'k' in the line, then it is the start of a data block that
+            # stores all the data for that k point
+            if "k" in line:
+                # initialize empty list to store the data for a k point
+                vectors_k = []
+                enrg_k = []
+                emp = 0
+                # read the k point
+                kline = line.strip().split()[-3:]
+                kpts.append([float(i) for i in kline])
+                # skip the unwanted vectors
+                for b in range(first_band - 1):
+                    for l in range(2 + 2 * (geom.na + 1)):
+                        vf.readline()
+                # now read the bands that we want
+                for b in np.arange(first_band, last_band + 1):
+                    band = int(vf.readline()[-6:].strip())  # label of band
+                    freq = float(vf.readline().strip().split()[-1])  # cm-1
+                    enrg = freq / 8.066
+                    enrg_k.append(enrg)
+                    # initialize empty array to store vectors for a band
+                    vector_b = np.empty((geom.na, 3), dtype=complex)
+                    # start to the read part of the vector
+                    vf.readline()  # Eigenmode (real part)
+                    for i in range(geom.na):
+                        v = vf.readline().strip().split()
+                        real = np.array([float(a) for a in v], dtype=complex)
+                        vector_b[i] = real
+                    # start to read the imaginary part of the vector
+                    vf.readline()  # Eigenmode (imaginary part)
+                    for i in range(geom.na):
+                        v = vf.readline().strip().split()
+                        imag = 1j * np.array([float(a) for a in v])
+                        vector_b[i, :] += imag
+                    vectors_k.append(vector_b)
+                enrgs.append(enrg_k)
+                vectors.append(vectors_k)
+    kpts = np.array(kpts)
+    kpts[:] *= 1.8897259886  # convert to Ang^-1
+    enrgs = np.array(enrgs)
+    vectors = np.array(vectors)
+    return kpts, enrgs, vectors
+
+
 def plot_phonon_bands(
     name,
     path="./phonon",
@@ -108,8 +178,9 @@ def plot_phonon_bands(
         fig.savefig(fig_path, dpi=dpi)
 
 
-def write_GammaPhonon_xsf(
-    name, geom, first_band: int, last_band: int, path="./phonon", num_of_cells=1
+def write_phonon_xsf(
+    geo, name, first_band: int, last_band: int, path="./phonon", num_of_cells=1,
+    q=[0, 0, 0]
 ):
     """
     Write xsf files to visualize phonon modes at Gamma point
@@ -121,129 +192,129 @@ def write_GammaPhonon_xsf(
         path: path to read and write files
         num_of_cells: number of unit cells to write
     """
-    vec_path = os.path.join(path, f"{name}.vectors")
-    with open(vec_path, "r") as vf:
-        # skip the first two lines
-        for l in range(2):
-            vf.readline()
-        # skip unwanted bands
-        for b in range(first_band - 1):
-            for l in range(2 + 2 * (geom.na + 1)):
-                vf.readline()
-        # read selected bands
-        for b in np.arange(first_band, last_band + 1, 1):
-            band = int(vf.readline()[-6:].strip())  # label of band
-            freq = float(vf.readline()[14:].strip())  # cm-1
-            enrg = freq / 8.066
-            vf.readline()  # real part
-            vector = np.empty((geom.na, 3))
-            for i in range(geom.na):
-                v = vf.readline().strip().split()
-                vec = np.array([float(a) for a in v])
-                vector[i, :] = vec
-            for i in range(geom.na + 1):
-                vf.readline()
+    kpts, enrgs, vectors = read_phonon_vectors(
+        geom=geo, name=name, path=path, first_band=first_band, last_band=last_band
+    )
+    newGeo = geo.tile(num_of_cells, 0)
+    coord = newGeo.xyz
+    # lattice vector
+    cell = geo.cell
+    # reciprocal lattice vector, Ang^-1
+    rcell = geo.rcell
+    # reduced lattice coordinates. The full coordiante is R + r, R is vector of
+    # the unit cell, r is the vector within the unit cell
+    R = np.floor(coord/cell.diagonal())*cell.diagonal()
+    # calculate the real wavevector from reduced wavevector
+    qReal = np.multiply(rcell.diagonal(), np.array(q))
+    # find the closest k (or called q) point to specified q point from the kpts list
+    i_q = 0
+    _q = kpts[i_q]  # the q that is closest to qReal
+    for i, qtmp in enumerate(kpts):
+        if np.linalg.norm(qReal-qtmp) < np.linalg.norm(qReal-_q):
+            i_q = i
+            _q = qtmp
 
-            with open(
-                os.path.join(
-                    path, "{}_GammaMode_{}_{:.2f}meV.xsf".format(
-                        name, band, enrg)
-                ),
-                "w",
-            ) as xsf:
-                xsf.write("# ---- XSF block for ---- \n")
-                xsf.write(f"# mode = {band} (Gamma)\n")
-                xsf.write(f"# frequency = {freq} cm-1\n")
-                xsf.write(f"# energy = {enrg} meV\n")
-                xsf.write("CRYSTAL\n")
-                # write primitive cell
-                xsf.write("PRIMVEC\n")
-                for i in range(3):
-                    xsf.write("  {:.8f}  {:.8f}  {:.8f}\n".format(
-                        *geom.cell[i, :]))
-                xsf.write("CONVVEC\n")
-                for i in range(3):
-                    xsf.write("  {:.8f}  {:.8f}  {:.8f}\n".format(
-                        *geom.cell[i, :]))
-                xsf.write("PRIMCOORD\n")
-                xsf.write("  {}  {}\n".format(geom.na, num_of_cells))
-                # write coordinates and displacement vectors for each atoms
-                for i, a, _ in geom.iter_species():
-                    xsf.write(
-                        "  {}  {:.8f}  {:.8f}  {:.8f}  {:.8f}  {:.8f}  {:.8f}\n".format(
-                            a.Z, *geom.xyz[i, :], *vector[i, :]
-                        )
+    for i in range(last_band-first_band+1):
+        ib = first_band+i-1
+        energy = enrgs[i_q, i]
+        phvec = vectors[i_q, i, :, :]
+        # vector times e^(ikR)
+        _vec = np.tile(phvec, (num_of_cells, 1))
+        _phase = np.exp(1j*R*_q)
+        newPhVec = np.multiply(_vec, _phase)
+        xsf_file = "{}_{}_K{:.2f}_B{}_{:.2f}meV.xsf".format(
+            name, num_of_cells, q[0], ib+1, energy)
+
+        with open(os.path.join(path, xsf_file), "w") as xsf:
+            xsf.write("# ---- XSF block for ---- \n")
+            xsf.write("# q = {:.6f}\t{:.6f}\t{:.6f}\t\n".format(*_q))
+            xsf.write(f"# mode = {ib+1}\n")
+            xsf.write(f"# frequency = {energy*8.066} cm-1\n")
+            xsf.write(f"# energy = {energy} meV\n")
+            xsf.write("CRYSTAL\n")
+            # write primitive cell
+            xsf.write("PRIMVEC\n")
+            for i in range(3):
+                xsf.write("  {:.8f}  {:.8f}  {:.8f}\n".format(
+                    *newGeo.cell[i, :]))
+            xsf.write("CONVVEC\n")
+            for i in range(3):
+                xsf.write("  {:.8f}  {:.8f}  {:.8f}\n".format(
+                    *newGeo.cell[i, :]))
+            xsf.write("PRIMCOORD\n")
+            xsf.write("  {}  {}\n".format(newGeo.na, num_of_cells))
+            # write coordinates and displacement vectors for each atoms
+            for i, a, _ in newGeo.iter_species():
+                xsf.write(
+                    "  {}  {:.8f}  {:.8f}  {:.8f}  {:.8f}  {:.8f}  {:.8f}\n".format(
+                        a.Z, *newGeo.xyz[i, :], *np.real(newPhVec[i, :])
                     )
+                )
 
 
-def read_phonon_vectors(
-    geom, name, first_band: int, last_band: int, path="./phonon"
-) -> np.ndarray:
+def write_axsf_movie(geo, name, path,
+                     first_band, last_band, steps=100,
+                     num_of_cells=5, q=[0, 0, 0], amplitude=1.0):
     """
-    Read the phonon eigenvectors from name.vectors file. By default read the
-    vectors for all k points and selected bands.
-    Arguments:
-        first_band: first band to read
-        last_band: last band to read
+    Write AXSF file to visualize the phonon mode.
+    Write files for multiple bands but for one specified wavevector (q)
+    Args:
+        geo: sisl Geometry
+        path: path to read and write files
+        file_name: output file name
+        phvec: phonon vector
+        iev: index of the eigenvector (phonon band index)
+        energy: energy of this mode, by default in meV unit
+        steps: number of animation steps
+        num_of_cells: number of unit cells to plot
+        q: reduced phonon wavevector ([0.5,0,0] means X)
     """
-    # empty list to store all the vectors
-    vectors = []
-    vec_path = os.path.join(path, f"{name}.vectors")
-    # empty list to store all k points
-    kpts = []
-    # empty list to store all energy values (in meV)
-    enrgs = []
-    # indicator of number of empty lines. If more than 2 empty lines then it marks
-    # the end of file
-    emp = 0
-    with open(vec_path, "r") as vf:
-        # keep reading the file until the end
-        while emp < 3:
-            line = vf.readline()
-            if len(line) == 0:
-                emp += 1
-            # If find 'k' in the line, then it is the start of a data block that
-            # stores all the data for that k point
-            if "k" in line:
-                # initialize empty list to store the data for a k point
-                vectors_k = []
-                enrg_k = []
-                emp = 0
-                # read the k point
-                kline = line.strip().split()[-3:]
-                kpts.append([float(i) for i in kline])
-                # skip the unwanted vectors
-                for b in range(first_band - 1):
-                    for l in range(2 + 2 * (geom.na + 1)):
-                        vf.readline()
-                # now read the bands that we want
-                for b in np.arange(first_band, last_band + 1):
-                    band = int(vf.readline()[-6:].strip())  # label of band
-                    freq = float(vf.readline().strip().split()[-1])  # cm-1
-                    enrg = freq / 8.066
-                    enrg_k.append(enrg)
-                    # initialize empty array to store vectors for a band
-                    vector_b = np.empty((geom.na, 3), dtype=complex)
-                    # start to the read part of the vector
-                    vf.readline()  # Eigenmode (real part)
-                    for i in range(geom.na):
-                        v = vf.readline().strip().split()
-                        real = np.array([float(a) for a in v], dtype=complex)
-                        vector_b[i] = real
-                    # start to read the imaginary part of the vector
-                    vf.readline()  # Eigenmode (imaginary part)
-                    for i in range(geom.na):
-                        v = vf.readline().strip().split()
-                        imag = 1j * np.array([float(a) for a in v])
-                        vector_b[i, :] += imag
-                    vectors_k.append(vector_b)
-                enrgs.append(enrg_k)
-                vectors.append(vectors_k)
-    kpts = np.array(kpts)
-    kpts[:] *= 1.8897259886 # convert to Ang^-1
-    enrgs = np.array(enrgs)
-    vectors = np.array(vectors)
-    return kpts, enrgs, vectors
+    kpts, enrgs, vectors = read_phonon_vectors(
+        geo, name, first_band, last_band)
+
+    newGeo = geo.tile(num_of_cells, 0)
+    coord = newGeo.xyz
+    # lattice vector
+    cell = geo.cell
+    # reciprocal lattice vector, Ang^-1
+    rcell = geo.rcell
+    # reduced lattice coordinates. The full coordiante is R + r, R is vector of
+    # the unit cell, r is the vector within the unit cell
+    R = np.floor(coord/cell.diagonal())*cell.diagonal()
+    # calculate the real wavevector from reduced wavevector
+    qReal = np.multiply(rcell.diagonal(), np.array(q))
+    # find the closest k (or called q) point to specified q point from the kpts list
+    i_q = 0
+    _q = kpts[i_q]  # the q that is closest to qReal
+    for i, qtmp in enumerate(kpts):
+        if np.linalg.norm(qReal-qtmp) < np.linalg.norm(qReal-_q):
+            i_q = i
+            _q = qtmp
+
+    for i in range(last_band-first_band+1):
+        ib = first_band+i-1
+        energy = enrgs[i_q, i]
+        axsf_file = "{}_{}_K{:.2f}_B{}_{:.2f}meV.axsf".format(
+            name, num_of_cells, q[0], ib+1, energy)
+        phvec = vectors[i_q, i, :, :]
+        # vector times e^(ikR)
+        _vec = np.tile(phvec, (num_of_cells, 1))
+        _phase = np.exp(1j*R*_q)
+        newPhVec = np.multiply(_vec, _phase)
+        with open(os.path.join(path, axsf_file), 'w') as axsf:
+            axsf.write(f"# ---- AXSF block ----\n")
+            axsf.write("# iev = {}\t energy = {} meV (freq = {} cm-1)\n".format(
+                ib+1, energy, energy*8.066))
+            axsf.write(f"ANIMSTEPS {steps}\n")
+            for i in range(steps):
+                axsf.write(f"ATOMS {i+1}\n")
+                tmpPhVec = newPhVec*np.exp(1j*(2*np.pi*i/steps+np.pi/2))
+                tmpPhVec = np.real(tmpPhVec)
+                tmpCoord = coord + amplitude*tmpPhVec
+                for a in range(coord.shape[0]):
+                    axsf.write("\t{}\t{:.7f}\t{:.7f}\t{:.7f}\n".format(
+                        newGeo.atoms[a].Z, *tmpCoord[a]
+                    ))
 
 
 def fat_phonon_bands(
@@ -349,3 +420,22 @@ def fat_phonon_bands(
         fig_name += enrg_str
         fig_path = os.path.join(path, fig_name + "." + save_format)
         fig.savefig(fig_path, dpi=dpi)
+
+
+def write_xyz_trajectory(geo, path, filename, phvec, iev, energy, steps=100,
+    unit_cells=3):
+    """Doesn't work for Avogadro"""
+    coord = geo.xyz
+    with open(os.path.join(path, filename), 'w') as f:
+        f.write(f"# ---- xyz trajectory ----\n")
+        f.write("# iev = {}\t energy = {} meV (freq = {} cm-1)\n".format(
+            iev, energy, energy*8.066))
+        for i in range(steps):
+            f.write(f'{geo.na}\n')
+            f.write(f" {i+1}\n")
+            tmpCoord = coord + phvec*np.sin(2*np.pi*i/steps)
+            tmpCoord = np.abs(tmpCoord)
+            for a in range(coord.shape[0]):
+                f.write("\t{}\t{:.7f}\t{:.7f}\t{:.7f}\n".format(
+                    geo.atoms[a].tag, *tmpCoord[a]
+                ))
