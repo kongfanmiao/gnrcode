@@ -28,6 +28,7 @@ def read_phonon_bands(
     if bands.ticklabels[1] == "X":
         bands.ticklabels[1] = "$X$"
     bands.k.data[:] *= 1.8897259886
+    bands.ticks[:] = np.array(bands.ticks)*1.8897259886
     return bands
 
 
