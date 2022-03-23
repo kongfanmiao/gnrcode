@@ -130,6 +130,13 @@ def get_Hamiltonian_with_spin(H):
     return H1, H2
 
 
+
+
+def num_occ(H,k=[0,0,0]):
+    e = H.eigh(k)
+    return e[e<0].shape[0]
+
+
 @timer
 def band_structure(
     H,
