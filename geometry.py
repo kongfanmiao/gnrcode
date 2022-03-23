@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import py3Dmol
 from sisl import Geometry, Atom, AtomicOrbital, plot
+from sklearn.preprocessing import scale
 
 
 def adjust_axes(
@@ -12,7 +13,7 @@ def adjust_axes(
     ay: int,
     rx=None,
     ry=None,
-    bond_length=1.0,
+    bond_length=None,
     plot_geom=True,
 ):
     """
@@ -48,8 +49,16 @@ def adjust_axes(
     if not (rx or ry):
         rx = geom.rij(ao, ax)
         ry = geom.rij(ao, ay)
+    
+    if not bond_length:
+        scale_factor = 1.0
+    else:
+        min_bond = 10000.0
+        for i in np.arange(1,geom.na):
+            min_bond = min(min_bond, geom.rij(0,i))
+        scale_factor = bond_length/min_bond
     # do linear transformation
-    xyz_new = np.array([[rx * bond_length, 0, 0], [0, ry * bond_length, 0], [0, 0, rz]])
+    xyz_new = np.array([[rx * scale_factor , 0, 0], [0, ry * scale_factor, 0], [0, 0, rz]])
     trans_matrix = np.dot(np.linalg.inv(xyz), xyz_new)
     coords = geom.xyz
     coords_new = np.dot(coords, trans_matrix)
@@ -94,7 +103,10 @@ def write_coord(geom: Geometry, name, path=None):
 
 
 def create_geometry(
-    name, path=None, cell=[[10, 0, 0], [0, 10, 0], [0, 0, 10]], plot_geom=True
+    name, path=None,
+    cell=[[10, 0, 0], [0, 10, 0], [0, 0, 10]],
+    bond=1.42,
+    plot_geom=True
 ) -> Geometry:
     """
     Read coordinates from .xyz file, move the geometry center to origin
@@ -118,7 +130,7 @@ def create_geometry(
             line = line.strip()
             line = line.split()
             raw_atom.append(str(line[0]))
-            atoms.append(Atom(str(line.pop(0))))
+            atoms.append(Atom(str(line.pop(0)), R=bond*1.01))
             coordinates.append([float(i) for i in line])
     coordinates = np.array(coordinates)
     coordinates = coordinates - np.mean(coordinates, 0)
