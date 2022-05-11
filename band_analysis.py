@@ -34,8 +34,6 @@ def read_final_energy(name, path="./opt", which=None):
             line = fout.readline()
             line = line[7:].strip().split()
             energy_dict[line[0]] = float(line[-1])
-    print("Total energy: {} eV".format(energy_dict["Total"]))
-    print("Fermi energy: {} eV".format(energy_dict["Fermi"]))
     if which:
         which = which.split(",")
         retlist = []
@@ -46,6 +44,9 @@ def read_final_energy(name, path="./opt", which=None):
         if len(retlist) == 1:
             retlist = retlist[0]
         return retlist
+    else:
+        print("Total energy: {} eV".format(energy_dict["Total"]))
+        print("Fermi energy: {} eV".format(energy_dict["Fermi"]))
 
 
 def read_dushin_out(file_path="./dushin.out"):
@@ -198,8 +199,9 @@ def band_structure(
         eigfile = [os.path.join(path, f"{name}.eig.{tick_labels}{knpts}.txt")]
     # try to read eigenvalues from file, if not exist then create one
     eigh = []
+    
+    # If it's in tight binding mode, then calculate the bands
     if tb:
-        # Calculate eigenvalues directly if in tight binding mode
         eigh.append(bsar[0].eigh())
     else:
         for i in range(len(bsar)):
@@ -221,7 +223,10 @@ def band_structure(
     plt.ylim(Erange[0], Erange[-1])
     plt.xlim(0, lk[-1])
     plt.ylabel("$E-E_F$ (eV)")
+    
+    # iterate spin
     for i, e in enumerate(eigh):
+        # iterate bands
         for j, ek in enumerate(e.T):
             lb = label[i] if j==0 else None
             plt.plot(lk, ek, linestyle=linestyle[i], color=color[i], 
@@ -233,7 +238,61 @@ def band_structure(
     if spin_polarized:
         plt.legend(bbox_to_anchor=legend_position)
 
+  
 
+@timer
+def plot_bands(name, path, 
+               Erange=[-3,3],
+               figsize=[8,6],
+               ticks_font=12,
+               label_font=12,
+               title_font=14,
+               ticklabels=['Gamma', 'X', 'Gamma']
+):
+    bandsile = get_sile(os.path.join(path, f'{name}.bands'))
+    bands = bandsile.read_data(as_dataarray=True)
+    bands.ticklabels[:] = ticklabels
+    
+    for i in range(len(ticklabels)):
+        if bands.ticklabels[i] == 'Gamma':
+            bands.ticklabels[i] = '\Gamma'
+        bands.ticklabels[i] = '$'+bands.ticklabels[i]+'$'
+    
+    ks = bands.k.data
+    plt.figure(figsize=figsize)
+    # set y axis limit if Energy range is given
+    if Erange:
+        emin, emax = Erange
+        plt.ylim(emin, emax)
+    else:
+        emin, emax = -1e2, 1e6
+    plt.ylabel("$E-E_F$ (eV)", fontsize=label_font)
+    plt.xticks(bands.ticks,bands.ticklabels)
+    plt.xlim([min(bands.ticks), max(bands.ticks)])
+    plt.tick_params(axis='x', labelsize=ticks_font)
+    plt.tick_params(axis='y', labelsize=ticks_font)
+    # plot the data
+    for i in range(bands.shape[2]):
+        band = bands[:,:,i]
+        # spin unpolarized
+        if bands.shape[1] == 1:
+            # select the bands that are in the given energy window
+            if np.any(np.logical_and(band > emin, band < emax)):
+                plt.plot(ks, band[:,0], color="k")
+        # spin polarized
+        elif bands.shape[1] == 2:
+            # select the bands that are in the given energy window
+            if np.any(np.logical_and(band > emin, band < emax)):
+                plt.plot(ks, band[:,0], color='r', linestyle='-')
+                plt.plot(ks, band[:,1], color='b', linestyle='--')
+
+    from matplotlib.lines import Line2D
+    custom_lines = [Line2D([0], [0], color='r', linestyle='-'),
+                    Line2D([0], [0], color='b', linestyle='--')]
+    plt.legend(custom_lines, ['spin up', 'spin down'], bbox_to_anchor=[1.1, 0.9])
+        
+        
+        
 
 @timer
 def interpolated_bs(
@@ -544,16 +603,17 @@ def dos(
     mpav = mp.apply.average
     if tb:
         dos = mpav.DOS(E, distribution=dis)
-    try:
-        with open(dosfile) as f:
-            dos = np.loadtxt(f)
-        assert len(dos) != 0
-    except:
-        print(f"dos file {dosfile} not found or empty. Now calculate new dos")
-        dos = mpav.DOS(E, distribution=dis)
-        # write to file
-        with open(dosfile, "w") as f:
-            np.savetxt(f, dos)
+    else:
+        try:
+            with open(dosfile) as f:
+                dos = np.loadtxt(f)
+            assert len(dos) != 0
+        except:
+            print(f"dos file {dosfile} not found or empty. Now calculate new dos")
+            dos = mpav.DOS(E, distribution=dis)
+            # write to file
+            with open(dosfile, "w") as f:
+                np.savetxt(f, dos)
 
     plt.figure(figsize=figsize)
     select_range = np.logical_and(E >= Erange[0], E <= Erange[-1])
@@ -580,14 +640,29 @@ def pdos(
     mpgrid=[30, 1, 1],
     projected_atoms="all",
     projected_orbitals=["s", "pxy", "pz"],
+    specify_atoms_and_orbitals=None,
     legend_position=[1.1, 0.9],
 ):
     """
     Projected density of states
-    by default plot selected projected orbitals for all the atom species
+    by default plot selected projected orbitals for all the atom specie
+    Arguments:
+        Erange: Energy range to plot.
+        dE: Energy mesh size.
+        gaussian_broadening: gaussian broadening parameter
+        mpgrid: Monkhorst-Pack grid
+        project_atoms: atoms to be projected, by default all atoms.
+        project_orbitals: orbitals to be projected.
+        specify_atoms_and_orbitals: should follow the following format:
+            'C: pz; N: pxy'. If the specify_atoms_and_orbitals argument is
+            not None, then it will overwrite the projected_atoms and
+            projected_orbitals arguments. If not, the projected orbitals will
+            be all the orbitals in projected_orbitals of each atoms in
+            projected_atoms.
     """
     # Firstly try to read pdos from file
     # The following part is similar to dos
+    geom = H.geometry
     E0, E1 = Erange
     emin = min(-30, E0)
     emax = max(30, E1)
@@ -613,7 +688,6 @@ def pdos(
             pdos_dict[a][orb] = pdos_dict_comp[key]
     except:
         print(f"pdos file {pdosfile} not found or empty. Calculating new pdos")
-        geom = H.geometry
         mp = MonkhorstPack(H, mpgrid)
         mpav = mp.apply.average
         # index of all the orbitals of each atom species
@@ -672,6 +746,22 @@ def pdos(
     # s, pxy, pz, d, f respectively.
     color_list = ["C0", "C1", "C2", "C3", "C4"]
 
+    orb_idx_dict = get_orb_list(geom)
+    if not specify_atoms_and_orbitals:
+        if projected_atoms == "all":
+            proj_atoms = list(orb_idx_dict.keys())
+        elif isinstance(projected_atoms, (list, tuple)):
+            proj_atoms = projected_atoms
+        if projected_orbitals == "all":
+            proj_orbs = ["s", "pxy", "pz", "d", "f"]
+        elif isinstance(projected_orbitals, (list, tuple)):
+            proj_orbs = projected_orbitals
+        proj_ats_orbs = dict(zip(proj_atoms, [proj_orbs] * len(proj_atoms)))
+    else:
+        proj_ats_orbs = convert_formated_str_to_dict(specify_atoms_and_orbitals)
+    print(proj_ats_orbs)
+
+
     plt.figure(figsize=figsize)
     plt.ylabel("$E - E_F$ (eV)")
     plt.xlabel("PDOS ($eV^{-1}$)")
@@ -680,12 +770,13 @@ def pdos(
     for a, pd_a in pdos_dict.items():
         io = 0  # index of orbitals, for colors
         # choose atoms
-        if a not in projected_atoms and projected_atoms != "all":
+        if a not in proj_ats_orbs.keys():
+            # skip this atom
             ia += 1
             continue
         for orb, pd_o in pd_a.items():
             # choose orbitals
-            if orb in projected_orbitals:
+            if orb in proj_ats_orbs[a]:
                 if orb == "pxy":
                     label = f"{a}: $p_x+p_y$"
                 elif orb == "pz":
@@ -717,8 +808,6 @@ def pdos(
 def pzdos(
     H, Erange=[-10, 20], mpgrid=[30, 1, 1], gaussian_broadening=0.05, plot_pzdos=True
 ):
-
-    import numpy as np
 
     mp = MonkhorstPack(H, mpgrid)
     mpav = mp.apply.average
@@ -1238,7 +1327,7 @@ def zak(contour, sub=None, gauge="R"):
             second = second.sub(sub)
             if gauge == "r":
                 second.change_gauge("r")
-            prd = dot(prd, prev.inner(second, diagonal=False))
+            prd = dot(prd, prev.inner(second, diag=False))
             prev = second
         if gauge == "r":
             g = contour.parent.geometry
@@ -1248,7 +1337,7 @@ def zak(contour, sub=None, gauge="R"):
                 1, -1
             )
             prev.state *= np.exp(-1j * phase)
-        prd = dot(prd, prev.inner(first, diagonal=False))
+        prd = dot(prd, prev.inner(first, diag=False))
         return prd
 
     d = _zak(contour.apply.iter.eigenstate())
