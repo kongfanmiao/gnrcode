@@ -147,7 +147,7 @@ def plot_phonon_bands(
     ax1.set_ylabel("Energy (meV)", fontsize=label_font)
     ax1.set_xticks(bands.ticks)
     ax1.set_xticklabels(bands.ticklabels)
-    ax1.set_xlim(bands.ticks)
+    ax1.set_xlim([min(bands.ticks), max(bands.ticks)])
     ax1.tick_params(axis='x', labelsize=ticks_font)
     ax1.tick_params(axis='y', labelsize=ticks_font)
 
