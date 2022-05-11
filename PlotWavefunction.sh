@@ -5,8 +5,7 @@ for input in "${@:2}"; do
     filename="${input%.*}.png"
     echo '
 
-# close Isosurface control window
-# set windowID [exec xwininfo -tree -root | grep "Isosurface/Property-plane Controls" | sed "s/^ *//g" | cut -d " " -f 1]
+# move Isosurface control window
 set allWindows [exec xwininfo -tree -root]
 set isoWindow [exec echo $allWindows | grep "Isosurface/Property-plane Controls" | sed "s/^ *//g"]
 set mainWindow [exec echo $allWindows | grep "XCrySDen" | sed "s/^ *//g"]
