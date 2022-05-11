@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from .geometry import *
+from .band_analysis import *
 from .tools import *
 from datetime import datetime
 
@@ -10,10 +11,10 @@ KFM = "Fanmiao Kong"
 
 
 kpoints_dict = {
-    "G": ("$\Gamma$", [0., 0., 0.]),
-    "X": ("$X$", [0.5, 0., 0.]),
-    "M": ("$M$", [0.5, 0.5, 0.]),
-    "K": ("$K$", [2.0 / 3, 1.0 / 3, 0.]),
+    "G": ("\Gamma", [0., 0., 0.]),
+    "X": ("X", [0.5, 0., 0.]),
+    "M": ("M", [0.5, 0.5, 0.]),
+    "K": ("K", [2.0 / 3, 1.0 / 3, 0.]),
 }
 
 def get_datetime():
@@ -26,7 +27,8 @@ def get_datetime():
 def write_siesta_runfile(
         geom: Geometry, name: str, path="./opt",
         mpgrid=[21, 1, 1],
-        bandlines_kpath='GXG',
+        write_bands=True,
+        bandlines_kpath='XGX',
         bandlines_nkpts=200,
         spin_polarized=False,
         spin_afm=True,
@@ -50,7 +52,11 @@ def write_siesta_runfile(
         cdf=True,
         mixer_weight=0.25,
         mixer_history=6,
-        variable_cell=True
+        variable_cell=True,
+        mesh_cutoff=400,
+        max_disp_len=0.05,
+        max_force_tol=0.01,
+        scf_H_tol=1e-3,
 ):
     """
     Write Siesta input file
@@ -88,6 +94,10 @@ def write_siesta_runfile(
         mixer_weight: SCF mixing weight
         mixer_history: SCF mixer history
         variable_cell: Fix the cell during MD relaxation or not
+        mesh_cutoff: Plane wave cutoff, in unit of Ry
+        max_disp_len: Max atomic displacement in optimization move, in Ang
+        max_force_tol: Max Force tolerance in coordinate optimization, in unit of eV/Ang
+        scf_H_tol: maximum absolute tolerance of Hamiltonian matrix elements
     """
     # Some other default parameters:
     #   PAO.BasisSize       DZP
@@ -120,7 +130,7 @@ SystemLabel             {}
 ############################################
 XC.functional           GGA
 XC.authors              PBE
-MeshCutoff              400 Ry
+MeshCutoff              {} Ry
 %block kgrid_Monkhorst_Pack
     {}  0   0   0.0 
     0   {}  0   0.0
@@ -132,8 +142,8 @@ MeshCutoff              400 Ry
 ############################################
 MD.TypeOfRun            CG  # coordinate optimization by conjugation gradient
 MD.Steps                1000
-MD.MaxDispl             0.05  Ang
-MD.MaxForceTol          0.01 eV/Ang
+MD.MaxDispl             {}  Ang
+MD.MaxForceTol          {} eV/Ang
 MD.VariableCell         {}
 MD.UseSaveXV            T
 MD.UseSaveCG            T
@@ -142,8 +152,8 @@ MD.UseSaveCG            T
 #   SCF
 ############################################
 Diag.Algorithm          {}
-""".format(struct_file, name, name, *mpgrid, variable_cell,
-            diag_algorithm))
+""".format(struct_file, name, name, mesh_cutoff, *mpgrid, max_disp_len,
+           max_force_tol, variable_cell, diag_algorithm))
         if num_eigenstates:
             # Only use this argument when diagonalization algorithm is
             # MRRR, ELPA, or Expert
@@ -154,22 +164,7 @@ DM.History.Depth        6
 MaxSCFIterations        500
 SCF.Mixer.Weight        {}
 SCF.Mixer.History       {}
-
-############################################
-#   Band Structures
-############################################
-# BandLines_kpathScale  pi/a
-%block BandLines_kpath""".format(mixer_weight, mixer_history
-        ))
-        for i, bdk in enumerate(bandlines_kpath):
-            tmp = kpoints_dict[bdk]
-            kpt = 1 if i == 0 else int(bandlines_nkpts*np.linalg.norm(
-                np.array(tmp[1])-np.array(kpoints_dict[bandlines_kpath[i-1]][1])))
-            f.write("\n{}\t{:.5f}\t{:.5f}\t{:.5f}\t{}".format(
-                kpt, *tmp[1], tmp[0]))
-        f.write("""
-%endblock BandLines_kpath
-WriteBands              T   # Write .bands file
+SCF.H.Tolerance         {} eV
 
 ############################################
 #   Output Settings
@@ -177,11 +172,13 @@ WriteBands              T   # Write .bands file
 COOP.write              F   # Crystal-Orbital Overlap, write 
                             # SystemLabel.fullBZ.WFSX and SystemLabel.HSX file
 WriteMullikenPop        1   # Write atomic and orbital charges
-WriteEigenvalues        T   # Write eigenvalues for sampling k points
+WriteEigenvalues        F   # Write eigenvalues for sampling k points
 SaveHS                  T   # Write Hamiltonian and overlap matrices, in .HSX file
 WriteCoorXmol           T   # Write optimized structure coordinates in .xyz file
 WriteCoorStep           T   # Write coordinate in every MD step to .XV file
-WriteMDXmol             F   # Write .ANI file readable by XMoL for animation of MD""")
+WriteMDXmol             F   # Write .ANI file readable by XMoL for animation of MD
+""".format(mixer_weight, mixer_history, scf_H_tol
+        ))
         if cdf:
             f.write("""
 CDF.Save                T
@@ -189,6 +186,26 @@ CDF.Compress            3
 WFS.Energy.Min          -30 eV
 WFS.Energy.Max          30 eV
 """)
+#------------------------------------------------------------------------------#
+        # calculate band structure
+        if write_bands:
+            f.write("""
+############################################
+#   Band Structures
+############################################
+# BandLinesScale  pi/a # default
+%block BandLines""")
+            for i, bdk in enumerate(bandlines_kpath):
+                tmp = kpoints_dict[bdk]
+                ktmp = 2*np.array(tmp[1]) # becuase bandlines scale is pi/a
+                nkpt = 1 if i == 0 else int(bandlines_nkpts*np.linalg.norm(
+                    np.array(ktmp)/2-np.array(kpoints_dict[bandlines_kpath[i-1]][1])))
+                f.write("\n{}\t{:.5f}\t{:.5f}\t{:.5f}\t{}".format(
+                    nkpt, *ktmp, tmp[0]))
+            f.write("""
+%endblock BandLines
+WriteBands              True   # Write .bands file
+    """)
 #------------------------------------------------------------------------------#
         # write spin settings, by default spin unpolarized
         spin_mode = 'non-polarized'
@@ -206,10 +223,10 @@ Spin                    {spin_mode}""")
         # parameter
         if spin_mode != 'non-polarized':
             f.write(f"""
-DM.InitSpin.AF          {spin_afm}""")
+DM.InitSpin.AF          {spin_afm}
+""")
         if spin_mode == 'spin-orbit':
-            f.write(f"""
-Spin.OrbitStrength          {soc_strength}
+            f.write(f"""Spin.OrbitStrength          {soc_strength}
 """)
 #------------------------------------------------------------------------------#
         # use DENCHAR program to plot wavefunction
@@ -415,7 +432,8 @@ def write_denchar_file(
         plot_wavefunctions=True,
         coor_units='Ang',
         num_unit_cells=2,
-        mesh_grid=4
+        mesh_grid=4,
+        box_extension=[1,5,5]
 ):
     """
     Write SystemLabel.denchar.fdf file for density charge calculation, to be 
@@ -431,12 +449,13 @@ def write_denchar_file(
     xmax, ymax, zmax = np.max(xyz, axis=0) - center
     xmin, ymin, zmin = np.min(xyz, axis=0) - center
     # denchar will multiple these numbers by 1.1
-    xmax += 1
-    xmin -= 1
-    ymin -= 5
-    ymax += 5
-    zmin -= 5
-    zmax += 5
+    x1, y1, z1 = box_extension
+    xmax += x1
+    xmin -= x1
+    ymax += y1
+    ymin -= y1
+    zmin -= z1
+    zmax += z1
     xnpts, ynpts, znpts = np.around(np.array(
         [xmax-xmin, ymax-ymin, zmax-zmin]
     )*mesh_grid).astype(int)
@@ -494,10 +513,11 @@ def write_win_file(
         dis_froz_max=None,
         dis_froz_min=None,
         kpoints_path="GXG",
-        guiding_centres=False,
+        guiding_centres=True,
         wa_plot_sc=[3, 1, 1],
-        kmesh_tol=0.0001,
-        search_shells=36
+        kmesh_tol=1e-6,
+        search_shells=36,
+        fermi_energy=None
 ):
     """
     Write input file for Wannier90 calculation
@@ -532,6 +552,12 @@ def write_win_file(
     # for i in range(num_wann):
     #     proj_orb += f'{2*i+1} '
     proj_orb_idx = f'1-{num_wann}'
+    
+    if not fermi_energy:
+        # read fermi energy from siesta output
+        fe = read_final_energy(name=name, path=path, which='fermi')
+    else:
+        fe = fermi_energy
 
     with open(os.path.join(path, f"{name}.win"), 'w') as f:
         f.write(f"! {KFM} created at {get_datetime()}\n")
@@ -539,15 +565,18 @@ def write_win_file(
 num_bands   =   {num_bands}
 num_wann    =   {num_wann}""")
         if num_ex_bands:
-            f.write(f"\nexclude_bands =  1-{num_ex_bands}")
-        if dis_win_min:
-            f.write(f"\ndis_win_min =  {dis_win_min}")
-        if dis_win_max:
-            f.write(f"\ndis_win_max =  {dis_win_max}")
-        if dis_froz_min:
-            f.write(f"\ndis_froz_min =  {dis_froz_min}")
-        if dis_froz_max is not None:
-            f.write(f"\ndis_froz_max =  {dis_froz_max}")
+            if isinstance(num_ex_bands, int):
+                f.write(f"\nexclude_bands =  1-{num_ex_bands}")
+            elif isinstance(num_ex_bands, str):
+                f.write(f"\nexclude_bands = {num_ex_bands}")
+        if dis_win_min != None:
+            f.write(f"\ndis_win_min =  {dis_win_min+fe}")
+        if dis_win_max != None:
+            f.write(f"\ndis_win_max =  {dis_win_max+fe}")
+        if dis_froz_min != None:
+            f.write(f"\ndis_froz_min =  {dis_froz_min+fe}")
+        if dis_froz_max != None:
+            f.write(f"\ndis_froz_max =  {dis_froz_max+fe}")
         f.write(f"""
 select_projections: {proj_orb_idx}
 
@@ -583,11 +612,14 @@ end unit_cell_cart
 
 begin kpoint_path""")
         # write k points path
+        # in fractional units w.r.t. 2*pi/a
         for i in range(len(kpoints_path)-1):
             tmp_str = "\n"+(" {}" + " {:.5f}"*3)*2
             k0, k1 = kpoints_path[i:i+2]
+            _K0 = np.array(kpoints_dict[k0][1])
+            _K1 = np.array(kpoints_dict[k1][1])
             f.write(tmp_str.format(
-                k0, *kpoints_dict[k0][1], k1, *kpoints_dict[k1][1]))
+                k0, *_K0, k1, *_K1))
         f.write("""
 end kpoint_path
 
@@ -705,17 +737,18 @@ SuperCell_1          {}
 SuperCell_2          {}    
 SuperCell_3          {} 
 
-BandLines_kpathScale       pi/a
-%block BandLines_kpath""".format(
+BandLinesScale       pi/a
+%block BandLines""".format(
             name, name, geom.atoms.nspecie, geom.na, *mpgrid, mesh_cutoff, *supercell))
         for i, bdk in enumerate(bandlines_kpath):
             tmp = kpoints_dict[bdk]
+            tmp = 2*np.array(tmp) # becuase bandlines scale is pi/a
             kpt = 1 if i == 0 else int(bandlines_nkpts*np.linalg.norm(
                 np.array(tmp[1])-np.array(kpoints_dict[bandlines_kpath[i-1]][1])))
             f.write("\n{}\t{:.5f}\t{:.5f}\t{:.5f}\t{}".format(
                 kpt, *tmp[1], tmp[0]))
         f.write("""
-%endblock BandLines_kpath
+%endblock BandLines
 
 %block ChemicalSpeciesLabel""")
         for i, a in enumerate(geom.atoms.atom):
@@ -750,7 +783,7 @@ def write_ifc_file(
     """
 
     ifc_file = name + '.ifc.fdf'
-    with open(os.path.join(path, {ifc_file}), 'w') as f:
+    with open(os.path.join(path, ifc_file), 'w') as f:
         f.write(f"# {KFM} created at {get_datetime()}\n")
         f.write("""
 SystemName           {}
@@ -768,7 +801,7 @@ MeshCutoff           {} Ry
 %endblock kgrid_Monkhorst_Pack
 
 %block ChemicalSpeciesLabel""".format(
-            name, name, geom.atoms.nspecie, *mpgrid, mesh_cutoff
+            name, name, geom.atoms.nspecie, mesh_cutoff, *mpgrid
         ))
         for i, a in enumerate(geom.atoms.atom):
             f.write(f"\n{i+1}\t{a.Z}\t{a.symbol}")
