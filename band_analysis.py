@@ -246,14 +246,14 @@ def plot_bands(name, path,
                figsize=[8,6],
                ticks_font=12,
                label_font=12,
-               title_font=14,
-               ticklabels=['Gamma', 'X', 'Gamma']
+               ticklabels=None,
 ):
     bandsile = get_sile(os.path.join(path, f'{name}.bands'))
     bands = bandsile.read_data(as_dataarray=True)
-    bands.ticklabels[:] = ticklabels
+    if ticklabels:
+        bands.ticklabels[:] = ticklabels
     
-    for i in range(len(ticklabels)):
+    for i in range(len(bands.ticklabels)):
         if bands.ticklabels[i] == 'Gamma':
             bands.ticklabels[i] = '\Gamma'
         bands.ticklabels[i] = '$'+bands.ticklabels[i]+'$'

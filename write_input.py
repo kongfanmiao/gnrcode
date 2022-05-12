@@ -197,7 +197,7 @@ WFS.Energy.Max          30 eV
 %block BandLines""")
             for i, bdk in enumerate(bandlines_kpath):
                 tmp = kpoints_dict[bdk]
-                ktmp = 2*np.array(tmp[1]) # becuase bandlines scale is pi/a
+                ktmp = 2*np.array(tmp[1]) # remember bandlines scale is pi/a
                 nkpt = 1 if i == 0 else int(bandlines_nkpts*np.linalg.norm(
                     np.array(ktmp)/2-np.array(kpoints_dict[bandlines_kpath[i-1]][1])))
                 f.write("\n{}\t{:.5f}\t{:.5f}\t{:.5f}\t{}".format(
@@ -742,11 +742,11 @@ BandLinesScale       pi/a
             name, name, geom.atoms.nspecie, geom.na, *mpgrid, mesh_cutoff, *supercell))
         for i, bdk in enumerate(bandlines_kpath):
             tmp = kpoints_dict[bdk]
-            tmp = 2*np.array(tmp) # becuase bandlines scale is pi/a
+            ktmp = 2*np.array(tmp[1]) # becuase bandlines scale is pi/a
             kpt = 1 if i == 0 else int(bandlines_nkpts*np.linalg.norm(
-                np.array(tmp[1])-np.array(kpoints_dict[bandlines_kpath[i-1]][1])))
+                np.array(ktmp)/2-np.array(kpoints_dict[bandlines_kpath[i-1]][1])))
             f.write("\n{}\t{:.5f}\t{:.5f}\t{:.5f}\t{}".format(
-                kpt, *tmp[1], tmp[0]))
+                kpt, *ktmp, tmp[0]))
         f.write("""
 %endblock BandLines
 
