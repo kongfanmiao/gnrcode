@@ -131,11 +131,11 @@ SystemLabel             {}
 XC.functional           GGA
 XC.authors              PBE
 MeshCutoff              {} Ry
-%block kgrid_Monkhorst_Pack
+%block kgrid.MonkhorstPack
     {}  0   0   0.0 
     0   {}  0   0.0
     0   0   {}  0.0
-%endblock kgrid_Monkhorst_Pack
+%endblock kgrid.MonkhorstPack
 
 ############################################
 #   Molecular Dynamics
@@ -181,6 +181,7 @@ WriteMDXmol             F   # Write .ANI file readable by XMoL for animation of 
         ))
         if cdf:
             f.write("""
+TS.HS.Save              T
 CDF.Save                T
 CDF.Compress            3
 WFS.Energy.Min          -30 eV
@@ -203,9 +204,7 @@ WFS.Energy.Max          30 eV
                 f.write("\n{}\t{:.5f}\t{:.5f}\t{:.5f}\t{}".format(
                     nkpt, *ktmp, tmp[0]))
             f.write("""
-%endblock BandLines
-WriteBands              True   # Write .bands file
-    """)
+%endblock BandLines""")
 #------------------------------------------------------------------------------#
         # write spin settings, by default spin unpolarized
         spin_mode = 'non-polarized'
@@ -236,7 +235,7 @@ DM.InitSpin.AF          {spin_afm}
 ############################################
 #   Use Utility Program DENCHAR
 ############################################
-WriteDenchar            T   # write .PLD and .DIM file to be used by Denchar
+Write.Denchar            T   # write .PLD and .DIM file to be used by Denchar
 %include {denchar_file_name}
 """)
 #------------------------------------------------------------------------------#
@@ -305,11 +304,11 @@ SlabDipoleCorrection    {}
 ############################################
 #   Interface with Wannier90
 ############################################
-Siesta2Wannier90.WriteMmn       true
-Siesta2Wannier90.WriteAmn       true
-Siesta2Wannier90.WriteEig       true
-Siesta2Wannier90.WriteUnk       true
-Siesta2Wannier90.UnkGridBinary  true
+Siesta2Wannier90.WriteMmn       T
+Siesta2Wannier90.WriteAmn       T
+Siesta2Wannier90.WriteEig       T
+Siesta2Wannier90.WriteUnk       T
+Siesta2Wannier90.UnkGridBinary  T
 Siesta2Wannier90.UnkGrid1       {}
 Siesta2Wannier90.UnkGrid2       {}
 Siesta2Wannier90.UnkGrid3       {}""".format(*s2w_grid))
@@ -686,9 +685,15 @@ Wannier90_in_SIESTA_compute_unk .true.
 """)
 
 
+
+# Way to calc phonon:
+# siesta/Utils/Vibra/Src/fcbuild < name.fcbuild.fdf
+# siesta/siesta < name.ifc.fdf > name.ifc.out
+# siesta/Utils/Vibra/Src/vibrator < name.fcbuild.fdf
+
 def write_fcbuild_file(
         geom: Geometry, name: str, path='./phonon',
-        mpgrid=[21, 1, 1],
+        mpgrid=[31, 1, 1],
         supercell=[1, 0, 0],
         mesh_cutoff=400,
         bandlines_kpath='GX',
@@ -725,12 +730,12 @@ NumberOfSpecies      {}
 NumberOfAtoms        {}
 
 PAO.BasisSizes       DZP
-Eigenvectors         .true.
-%block kgrid_Monkhorst_Pack
+Eigenvectors         T
+%block kgrid.MonkhorstPack
     {}  0   0   0.0 
     0   {}  0   0.0
     0   0   {}  0.0
-%endblock kgrid_Monkhorst_Pack
+%endblock kgrid.MonkhorstPack
 MeshCutoff           {} Ry
 
 SuperCell_1          {} 
@@ -776,7 +781,12 @@ AtomicCoordinatesFormat NotScaledCartesianAng
 def write_ifc_file(
         geom: Geometry, name: str, path='./phonon',
         mpgrid=[21, 1, 1],
-        mesh_cutoff=400
+        mesh_cutoff=400,
+        scf_H_tol=1e-3,
+        mixer_weight=0.25,
+        mixer_history=6,
+        functional='GGA',
+        functional_authors='PBE'
 ):
     """
     Create ifc file for Siesta phonon calculation
@@ -791,18 +801,24 @@ SystemLabel          {}
 
 NumberOfSpecies      {}
 NumberOfAtoms        < FC.fdf
+XC.functional        {}
+XC.authors           {}
 PAO.BasisSizes       DZP
 MeshCutoff           {} Ry
+SCF.H.Tolerance      {} eV
+SCF.Mixer.Weight        {}
+SCF.Mixer.History       {}
 
-%block kgrid_Monkhorst_Pack
+%block kgrid.MonkhorstPack
     {}  0   0   0.0 
     0   {}  0   0.0
     0   0   {}  0.0
-%endblock kgrid_Monkhorst_Pack
+%endblock kgrid.MonkhorstPack
 
 %block ChemicalSpeciesLabel""".format(
-            name, name, geom.atoms.nspecie, mesh_cutoff, *mpgrid
-        ))
+            name, name, geom.atoms.nspecie, functional, functional_authors,
+            mesh_cutoff, scf_H_tol,
+            mixer_weight, mixer_history, *mpgrid))
         for i, a in enumerate(geom.atoms.atom):
             f.write(f"\n{i+1}\t{a.Z}\t{a.symbol}")
         f.write("""
