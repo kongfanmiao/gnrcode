@@ -243,7 +243,7 @@ def band_structure(
 @timer
 def plot_bands(name, path, 
                Erange=[-3,3],
-               figsize=[8,6],
+               figsize=[6,4],
                ticks_font=12,
                label_font=12,
                ticklabels=None,
@@ -286,10 +286,11 @@ def plot_bands(name, path,
                 plt.plot(ks, band[:,0], color='r', linestyle='-')
                 plt.plot(ks, band[:,1], color='b', linestyle='--')
 
-    from matplotlib.lines import Line2D
-    custom_lines = [Line2D([0], [0], color='r', linestyle='-'),
-                    Line2D([0], [0], color='b', linestyle='--')]
-    plt.legend(custom_lines, ['spin up', 'spin down'], bbox_to_anchor=[1.1, 0.9])
+    if bands.shape[1] == 2:
+        from matplotlib.lines import Line2D
+        custom_lines = [Line2D([0], [0], color='r', linestyle='-'),
+                        Line2D([0], [0], color='b', linestyle='--')]
+        plt.legend(custom_lines, ['spin up', 'spin down'], bbox_to_anchor=[1.1, 0.9])
         
         
         
