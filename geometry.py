@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import py3Dmol
 from sisl import Geometry, Atom, AtomicOrbital, plot
@@ -13,7 +14,7 @@ def adjust_axes(
     ay: int,
     rx=None,
     ry=None,
-    bond_length=None,
+    CC_bond_length=None,
     plot_geom=True,
 ):
     """
@@ -28,9 +29,8 @@ def adjust_axes(
         ay: index of atom that you want to be aligned along y axis
         rx: distance between ao and ax
         ry: distance between ao and ay
-        bond_length: set the bond_length. It works as a scale factor. If you 
-            want to specify the rx and ry vector length, remeber that the default 
-            bond_length is 1.0, not 1.42
+        CC_bond_length: set the C-C bond_length. It works as a scale factor. If you 
+            want to specify the rx and ry vector length
         plot_geom: choose if to plot the geometry after rotation
     """
     # make sure it is a sisl Geometry object
@@ -50,13 +50,18 @@ def adjust_axes(
         rx = geom.rij(ao, ax)
         ry = geom.rij(ao, ay)
     
-    if not bond_length:
+    if not CC_bond_length:
         scale_factor = 1.0
     else:
-        min_bond = 10000.0
-        for i in np.arange(1,geom.na):
-            min_bond = min(min_bond, geom.rij(0,i))
-        scale_factor = bond_length/min_bond
+        min_bond = 10000
+        n = None
+        for i,a,_ in geom.iter_species():
+            if a.Z == 6:
+                if not n:
+                    n = i
+                else:
+                    min_bond = min(min_bond, geom.rij(n,i))
+        scale_factor = CC_bond_length/min_bond
     # do linear transformation
     xyz_new = np.array([[rx * scale_factor , 0, 0], [0, ry * scale_factor, 0], [0, 0, rz]])
     trans_matrix = np.dot(np.linalg.inv(xyz), xyz_new)
@@ -209,8 +214,11 @@ def move_to_zcenter(g, plot_geom=True):
     return gz
 
 
-def display2D(g, aid=False, sc=True, rotate=False, figsize=(10, 5), **kwargs):
+def display2D(g, aid=False, sc=True, rotate=False, figsize=(10, 5),
+    text_color='green', text_font_size=16, **kwargs):
 
+    mpl.rcParams['text.color'] = text_color
+    mpl.rcParams['font.size'] = text_font_size
     xyz = g.xyz
     minxyz = np.amin(xyz, 0)
     print("minxyz:", minxyz)
@@ -231,6 +239,7 @@ def display2D(g, aid=False, sc=True, rotate=False, figsize=(10, 5), **kwargs):
         plt.xlim(minxyz[0] - 6, maxxyz[0] + 6)
     else:
         plt.ylim(minxyz[1] - 2, maxxyz[1] + 2)
+    mpl.rcParams.update(mpl.rcParamsDefault)
 
 
 def SetView(xyzview, rotation, zoom):
