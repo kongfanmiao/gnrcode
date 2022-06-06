@@ -33,7 +33,7 @@ def read_phonon_bands(
 
 
 def read_phonon_vectors(
-    geom, name, first_band: int, last_band: int, path="./phonon"
+    geom, name, path, first_band: int, last_band: int
 ) -> np.ndarray:
     """
     Read the phonon eigenvectors from name.vectors file. By default read the
@@ -271,7 +271,7 @@ def write_axsf_movie(geo, name, path,
         q: reduced phonon wavevector ([0.5,0,0] means X)
     """
     kpts, enrgs, vectors = read_phonon_vectors(
-        geo, name, first_band, last_band)
+        geo, name, path, first_band, last_band)
 
     newGeo = geo.tile(num_of_cells, 0)
     coord = newGeo.xyz
