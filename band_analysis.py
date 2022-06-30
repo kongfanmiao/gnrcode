@@ -1,4 +1,5 @@
 import os
+import re, regex
 from matplotlib import lines
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,27 +27,29 @@ def read_final_energy(name, path="./opt", which=None):
     outfile = name + ".out"
     filepath = os.path.join(path, outfile)
     with open(filepath) as fout:
-        line = fout.readline()
-        while "siesta: Final energy (eV)" not in line:
-            line = fout.readline()
-        energy_dict = {}
-        for i in range(12):
-            line = fout.readline()
-            line = line[7:].strip().split()
-            energy_dict[line[0]] = float(line[-1])
+        lines = fout.read()
+    ergStr = regex.search('(?<=siesta: Final energy \(eV\):\n)(.+=.+\n)+', 
+                            lines).group(0)
+    rawList = regex.findall('siesta: .+=.+', ergStr)
+    ergDict = dict()
+    for s in rawList:
+        [key, value] = s[7:].split('=')
+        key = key.strip()
+        value = float(value)
+        ergDict[key] = value
     if which:
         which = which.split(",")
         retlist = []
         for s in which:
-            for key in energy_dict.keys():
+            for key in ergDict.keys():
                 if key.lower() == s.strip().lower():
-                    retlist.append(energy_dict[key])
+                    retlist.append(ergDict[key])
         if len(retlist) == 1:
             retlist = retlist[0]
         return retlist
     else:
-        print("Total energy: {} eV".format(energy_dict["Total"]))
-        print("Fermi energy: {} eV".format(energy_dict["Fermi"]))
+        print("Total energy: {} eV".format(ergDict["Total"]))
+        print("Fermi energy: {} eV".format(ergDict["Fermi"]))
 
 
 def read_dushin_out(file_path="./dushin.out"):
