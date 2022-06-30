@@ -445,9 +445,10 @@ def write_denchar_file(
     gTmp = geom.tile(num_unit_cells,0)
     xyz = gTmp.xyz
     cell = gTmp.cell
-    center = gTmp.center()
-    xmax, ymax, zmax = np.max(xyz, axis=0) - center
-    xmin, ymin, zmin = np.min(xyz, axis=0) - center
+    origin = gTmp.center()
+    origin[0] = 0
+    xmax, ymax, zmax = np.max(xyz, axis=0) - origin
+    xmin, ymin, zmin = np.min(xyz, axis=0) - origin
     # denchar will multiple these numbers by 1.1
     x1, y1, z1 = box_extension
     xmax += x1
@@ -459,7 +460,7 @@ def write_denchar_file(
     xnpts, ynpts, znpts = np.around(np.array(
         [xmax-xmin, ymax-ymin, zmax-zmin]
     )*mesh_grid).astype(int)
-    xaxis = center + np.array([5, 0, 0])
+    xaxis = origin + np.array([5, 0, 0])
 
     with open(filepath, 'w') as f:
         f.write(f"# {KFM} created at {get_datetime()}\n")
@@ -482,7 +483,7 @@ Denchar.CoorUnits       {coor_units}""")
 %block Denchar.PlaneOrigin
  {:.8f} {:.8f} {:.8f}
 %endblock Denchar.PlaneOrigin
-""".format(*center))
+""".format(*origin))
         f.write("""
 %block Denchar.X-Axis
  {:.8f} {:.8f} {:.8f}
