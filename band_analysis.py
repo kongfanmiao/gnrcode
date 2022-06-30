@@ -3,6 +3,7 @@ import re, regex
 from matplotlib import lines
 import numpy as np
 import matplotlib.pyplot as plt
+import xarray
 from sisl import BandStructure, Hamiltonian, MonkhorstPack, Grid
 from sisl.physics import electron, gaussian
 from sisl.io import get_sile
@@ -241,6 +242,30 @@ def band_structure(
     if spin_polarized:
         plt.legend(bbox_to_anchor=legend_position)
 
+def read_bands(
+    name, path="./opt", as_dataarray=True, squeeze=True
+) -> xarray.DataArray:
+    """
+    Read band structure from name.bands file
+    """
+
+    bands_path = os.path.join(path, f"{name}.bands")
+    # read data using methods in sisl
+    bandsile = get_sile(bands_path)
+    bands = bandsile.read_data(as_dataarray=as_dataarray)
+    # remove redundant dimension of data
+    if squeeze:
+        bands = bands.squeeze()
+    try:
+        if bands.ticklabels[0] == "Gamma":
+            bands.ticklabels[0] = "$\Gamma$"
+        if bands.ticklabels[1] == "X":
+            bands.ticklabels[1] = "$X$"
+        bands.k.data[:] *= 1.8897259886
+        bands.ticks[:] = np.array(bands.ticks)*1.8897259886
+    except:
+        pass
+    return bands
   
 
 @timer
