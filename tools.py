@@ -22,6 +22,20 @@ def timer(func):
     return wrapper_timer
 
 
+def read_geom_and_ham(name, path):
+    """
+    Read geometry and Hamiltonian from Siesta output files
+    """
+    runFile = os.path.join(path, f'{name}_RUN.fdf')
+    xvFile = os.path.join(path, f'{name}.XV')
+    H = get_sile(runFile).read_hamiltonian()
+    g = get_sile(xvFile).read_geometry()
+    H.geometry.cell[:] = g.cell[:]
+    H.geometry.xyz[:] = g.xyz[:]
+    g = H.geometry
+    return g, H
+
+    
 # cast the hamiltonian copy into a function
 def copy_hamiltonian(H, shape=3):
 
