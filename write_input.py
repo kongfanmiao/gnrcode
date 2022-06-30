@@ -177,6 +177,7 @@ SaveHS                  T   # Write Hamiltonian and overlap matrices, in .HSX fi
 WriteCoorXmol           T   # Write optimized structure coordinates in .xyz file
 WriteCoorStep           T   # Write coordinate in every MD step to .XV file
 WriteMDXmol             F   # Write .ANI file readable by XMoL for animation of MD
+WriteForces             T   # Write forces of each MD step to output file
 """.format(mixer_weight, mixer_history, scf_H_tol
         ))
         if cdf:
