@@ -1,4 +1,5 @@
 from sisl import *
+import os
 import time
 import functools
 import numpy as np
