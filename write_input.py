@@ -27,6 +27,8 @@ def get_datetime():
 def write_siesta_runfile(
         geom: Geometry, name: str, path="./opt",
         mpgrid=[21, 1, 1],
+        xc_functional='GGA',
+        xc_authors='PBE',
         write_bands=True,
         bandlines_kpath='XGX',
         bandlines_nkpts=200,
@@ -128,8 +130,8 @@ SystemLabel             {}
 ############################################
 #   Parameters
 ############################################
-XC.functional           GGA
-XC.authors              PBE
+XC.functional           {}
+XC.authors              {}
 MeshCutoff              {} Ry
 %block kgrid.MonkhorstPack
     {}  0   0   0.0 
@@ -152,7 +154,8 @@ MD.UseSaveCG            T
 #   SCF
 ############################################
 Diag.Algorithm          {}
-""".format(struct_file, name, name, mesh_cutoff, *mpgrid, max_disp_len,
+""".format(struct_file, name, name, xc_functional, xc_authors, mesh_cutoff, 
+           *mpgrid, max_disp_len,
            max_force_tol, variable_cell, diag_algorithm))
         if num_eigenstates:
             # Only use this argument when diagonalization algorithm is
