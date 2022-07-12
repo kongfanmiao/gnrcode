@@ -153,7 +153,7 @@ def band_structure(
     tick_labels="XGX",
     shift=0.0,
     knpts=200,
-    tb=False,
+    tb=True,
     spin_polarized=False,
     legend_position = [1.1,0.9],
     **kwargs,
@@ -164,6 +164,8 @@ def band_structure(
         tb: if in tight binding formalism
         spin_polarized: spin polarized mode or not
     """
+    if name:
+        tb=False
     tkls = list(tick_labels)
     # Position of ticks in Brillouin zone
     tks = []
