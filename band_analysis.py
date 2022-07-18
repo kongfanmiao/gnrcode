@@ -476,8 +476,11 @@ def unfold_band(
 
 
 @timer
-def band_gap(H, name=None, path="./opt", tb=False):
+def band_gap(H, name=None, path="./opt", tb=True):
 
+    if name:
+        tb=False
+        
     rlv = np.int0(~(np.array(H.nsc) == 1))
     bs = BandStructure(
         H, [[0, 0, 0], list(0.5 * rlv), list(rlv)], 200, ["$\Gamma$", "X", "$\Gamma$"]
@@ -608,9 +611,12 @@ def dos(
     color="k",
     mpgrid=[30, 1, 1],
     gaussian_broadening=0.05,
-    tb=False,
+    tb=True,
     **kwargs,
 ):
+
+    if name:
+        tb = False
 
     # Estimate the whole energy range by energy at Gamma point
     # Calculate DOS for whole energy range, then select to show certain range
