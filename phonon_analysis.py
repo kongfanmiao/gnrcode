@@ -23,17 +23,19 @@ def read_phonon_bands(
     # remove redundant dimension of data
     if squeeze:
         bands = bands.squeeze()
-    if bands.ticklabels[0] == "Gamma":
-        bands.ticklabels[0] = "$\Gamma$"
-    if bands.ticklabels[1] == "X":
-        bands.ticklabels[1] = "$X$"
-    bands.k.data[:] *= 1.8897259886
-    bands.ticks[:] = np.array(bands.ticks)*1.8897259886
+    try:
+        if bands.ticklabels[0] == "Gamma":
+            bands.ticklabels[0] = "$\Gamma$"
+        if bands.ticklabels[1] == "X":
+            bands.ticklabels[1] = "$X$"
+        bands.k.data[:] *= 1.8897259886
+        bands.ticks[:] = np.array(bands.ticks)*1.8897259886
+    except:
+        pass
     return bands
 
-
 def read_phonon_vectors(
-    geom, name, path, first_band: int, last_band: int
+    name, path, first_band: int=1, last_band: int=None
 ) -> np.ndarray:
     """
     Read the phonon eigenvectors from name.vectors file. By default read the
@@ -52,6 +54,18 @@ def read_phonon_vectors(
     # indicator of number of empty lines. If more than 2 empty lines then it marks
     # the end of file
     emp = 0
+    # number of atoms
+    NA = 0
+    with open(vec_path, 'r') as vf:
+        line = vf.readline()
+        while 'Eigenmode (real part)' not in line:
+            line = vf.readline()
+        line = vf.readline()
+        while 'Eigenmode (imaginary part)' not in line:
+            NA += 1
+            line = vf.readline()
+    if not last_band:
+        last_band = 3*NA
     with open(vec_path, "r") as vf:
         # keep reading the file until the end
         while emp < 3:
@@ -70,7 +84,7 @@ def read_phonon_vectors(
                 kpts.append([float(i) for i in kline])
                 # skip the unwanted vectors
                 for b in range(first_band - 1):
-                    for l in range(2 + 2 * (geom.na + 1)):
+                    for l in range(2 + 2 * (NA + 1)):
                         vf.readline()
                 # now read the bands that we want
                 for b in np.arange(first_band, last_band + 1):
@@ -79,16 +93,16 @@ def read_phonon_vectors(
                     enrg = freq / 8.066
                     enrg_k.append(enrg)
                     # initialize empty array to store vectors for a band
-                    vector_b = np.empty((geom.na, 3), dtype=complex)
+                    vector_b = np.empty((NA, 3), dtype=complex)
                     # start to the read part of the vector
                     vf.readline()  # Eigenmode (real part)
-                    for i in range(geom.na):
+                    for i in range(NA):
                         v = vf.readline().strip().split()
                         real = np.array([float(a) for a in v], dtype=complex)
                         vector_b[i] = real
                     # start to read the imaginary part of the vector
                     vf.readline()  # Eigenmode (imaginary part)
-                    for i in range(geom.na):
+                    for i in range(NA):
                         v = vf.readline().strip().split()
                         imag = 1j * np.array([float(a) for a in v])
                         vector_b[i, :] += imag
@@ -100,6 +114,8 @@ def read_phonon_vectors(
     enrgs = np.array(enrgs)
     vectors = np.array(vectors)
     return kpts, enrgs, vectors
+
+
 
 
 def plot_phonon_bands(

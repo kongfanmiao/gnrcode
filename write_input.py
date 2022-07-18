@@ -1,3 +1,4 @@
+from stringprep import map_table_b2
 from sisl import Geometry
 import numpy as np
 import matplotlib.pyplot as plt
@@ -29,6 +30,7 @@ def write_siesta_runfile(
         mpgrid=[21, 1, 1],
         xc_functional='GGA',
         xc_authors='PBE',
+        basis_size='DZP',
         write_bands=True,
         bandlines_kpath='XGX',
         bandlines_nkpts=200,
@@ -102,10 +104,8 @@ def write_siesta_runfile(
         scf_H_tol: maximum absolute tolerance of Hamiltonian matrix elements
     """
     # Some other default parameters:
-    #   PAO.BasisSize       DZP
     #   PAO.BasisType       split
     #   PAO.EnergyShift     0.02 Ry
-    #   SCF.DM.Tolerance    1e-4
     #   SolutionMethod      diagon
     #   SaveRho             F
     #   WriteVoronoiPop     F
@@ -119,24 +119,25 @@ def write_siesta_runfile(
         # raise error if we are still working in the ./opt directory
         if path == "./opt":
             raise ValueError(f"Dont't Work in directory ./opt for {calc_type}")
-
+    mp1, mp2, mp3 = mpgrid
     with open(os.path.join(path, run_file), 'w') as f:
         f.write(f"# {KFM} created at {get_datetime()}\n")
-        f.write("""
-%include {}
-SystemName              {}
-SystemLabel             {}
+        f.write(f"""
+%include {struct_file}
+SystemName              {name}
+SystemLabel             {name}
 
 ############################################
 #   Parameters
 ############################################
-XC.functional           {}
-XC.authors              {}
-MeshCutoff              {} Ry
+XC.functional           {xc_functional}
+XC.authors              {xc_authors}
+PAO.BasisSize           {basis_size}
+MeshCutoff              {mesh_cutoff} Ry
 %block kgrid.MonkhorstPack
-    {}  0   0   0.0 
-    0   {}  0   0.0
-    0   0   {}  0.0
+    {mp1}  0   0   0.0 
+    0   {mp2}  0   0.0
+    0   0   {mp3}  0.0
 %endblock kgrid.MonkhorstPack
 
 ############################################
@@ -144,19 +145,17 @@ MeshCutoff              {} Ry
 ############################################
 MD.TypeOfRun            CG  # coordinate optimization by conjugation gradient
 MD.Steps                1000
-MD.MaxDispl             {}  Ang
-MD.MaxForceTol          {} eV/Ang
-MD.VariableCell         {}
+MD.MaxDispl             {max_disp_len}  Ang
+MD.MaxForceTol          {max_force_tol} eV/Ang
+MD.VariableCell         {variable_cell}
 MD.UseSaveXV            T
 MD.UseSaveCG            T
 
 ############################################
 #   SCF
 ############################################
-Diag.Algorithm          {}
-""".format(struct_file, name, name, xc_functional, xc_authors, mesh_cutoff, 
-           *mpgrid, max_disp_len,
-           max_force_tol, variable_cell, diag_algorithm))
+Diag.Algorithm          {diag_algorithm}
+""")
         if num_eigenstates:
             # Only use this argument when diagonalization algorithm is
             # MRRR, ELPA, or Expert
@@ -790,40 +789,39 @@ def write_ifc_file(
         scf_H_tol=1e-3,
         mixer_weight=0.25,
         mixer_history=6,
-        functional='GGA',
-        functional_authors='PBE'
+        xc_functional='GGA',
+        xc_authors='PBE',
+        basis_size='DZP'
 ):
     """
     Create ifc file for Siesta phonon calculation
     """
 
     ifc_file = name + '.ifc.fdf'
+    mp1, mp2, mp3 = mpgrid
     with open(os.path.join(path, ifc_file), 'w') as f:
         f.write(f"# {KFM} created at {get_datetime()}\n")
-        f.write("""
-SystemName           {}
-SystemLabel          {}
+        f.write(f"""
+SystemName           {name}
+SystemLabel          {name}
 
-NumberOfSpecies      {}
+NumberOfSpecies      {geom.atoms.nspecie}
 NumberOfAtoms        < FC.fdf
-XC.functional        {}
-XC.authors           {}
-PAO.BasisSizes       DZP
-MeshCutoff           {} Ry
-SCF.H.Tolerance      {} eV
-SCF.Mixer.Weight        {}
-SCF.Mixer.History       {}
+XC.functional        {xc_functional}
+XC.authors           {xc_authors}
+PAO.BasisSizes       {basis_size}
+MeshCutoff           {mesh_cutoff} Ry
+SCF.H.Tolerance      {scf_H_tol} eV
+SCF.Mixer.Weight     {mixer_weight}
+SCF.Mixer.History    {mixer_history}
 
 %block kgrid.MonkhorstPack
-    {}  0   0   0.0 
-    0   {}  0   0.0
-    0   0   {}  0.0
+    {mp1}  0   0   0.0 
+    0   {mp2}  0   0.0
+    0   0   {mp3}  0.0
 %endblock kgrid.MonkhorstPack
 
-%block ChemicalSpeciesLabel""".format(
-            name, name, geom.atoms.nspecie, functional, functional_authors,
-            mesh_cutoff, scf_H_tol,
-            mixer_weight, mixer_history, *mpgrid))
+%block ChemicalSpeciesLabel""")
         for i, a in enumerate(geom.atoms.atom):
             f.write(f"\n{i+1}\t{a.Z}\t{a.symbol}")
         f.write("""
