@@ -40,7 +40,7 @@ def write_siesta_runfile(
         soc_strength=1.0,
         denchar=False,
         wfs_write_for_kpts=False,
-        wavefunc_kpts: list = None,
+        wfs_kpts: list = None,
         wfs_write_for_bands=False,
         wfs_bands_range: list = None,
         E_field: list = None,
@@ -76,7 +76,7 @@ def write_siesta_runfile(
         denchar: Use DENCHAR to calculate the density of charge. Required for 
             wavefunctions calculation
         wfs_write_for_kpts: Calculate and plot wavefunctions or not
-        wavefunc_kpts: At which k points that the wavefunctions are calculated.
+        wfs_kpts: At which k points that the wavefunctions are calculated.
             Note that by default the k points is scaled by pi/a. MUST use float number!
         wfs_write_for_bands: Write wavefunctions for given bands
         wfs_bands_range: Specify for which bands that the wavefunctions are calculated,
@@ -253,7 +253,7 @@ WriteWaveFunctions      T
 # the k points are in the scale of pi/a by default
 %block WaveFuncKPoints""")
             # The WaveFuncKPointsScale is pi/a by default
-            for kpt in wavefunc_kpts:
+            for kpt in wfs_kpts:
                 if not isinstance(kpt, list):
                     raise TypeError(
                         "The k points list should be a list of lists")
