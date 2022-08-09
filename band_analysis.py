@@ -1616,7 +1616,7 @@ def Z2(H, num_bands=None):
 
 
 
-
+@timer
 def plot_wannier_centers(
     geom,
     name,
@@ -1644,12 +1644,16 @@ def plot_wannier_centers(
         wc = np.array(
             list(map(lambda x: list(map(float, x.strip().split()[1:])), wc_raw))
         )
+        # Translate wannier centres to home cell
         wc_hc = wc - np.floor((wc - (gcenter - abc / 2)) / abc).dot(cell)
         # sum of wannier centers
-        wcs = wc_hc.sum(0)
-        temp = wcs.dot(np.linalg.inv(cell))
-        wcs = np.dot(temp - np.floor(temp), cell)
-        print("Sum of Wannier centres: ", wcs)
+        wcs_hc = wc_hc.sum(0)
+        temp = wcs_hc.dot(np.linalg.inv(cell))
+        wcs_rel_frac = temp - np.floor(temp)
+        wcs_rel = np.dot(wcs_rel_frac, cell)
+        print("Sum of Wannier centres (Relative Fractional):\n\t", wcs_rel_frac)
+        print("Sum of Wannier centres (Relative):\n\t", wcs_rel)
+        
     plt.figure(figsize=figsize)
     plot(geom, supercell=sc)
     plt.scatter(wc_hc[:, 0], wc_hc[:, 1], s=marker_size, c=marker_color, marker=marker)
