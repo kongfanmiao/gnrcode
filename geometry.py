@@ -70,7 +70,7 @@ def adjust_axes(
     geom.xyz = coords_new
 
     if plot_geom:
-        plot(geom, atom_indices=True)
+        display2D(geom, aid=True)
         plt.axis("equal")
 
 
@@ -142,7 +142,7 @@ def create_geometry(
 
     geom = Geometry(coordinates, atoms, cell)
     if plot_geom:
-        plot(geom, atom_indices=True)
+        display2D(geom, aid=True)
         plt.axis("equal")
 
     return geom
@@ -154,13 +154,14 @@ def move_to_origo(gnr):
     """
 
     gnr = gnr.translate([-gnr.center()[0], -gnr.center()[1], 0])
-    plot(gnr)
+    display2D(gnr, sc=False, aid=False)
     plt.axis("equal")
 
     return gnr
 
 
-def move_to_center(g, axis="xyz", plot_geom=True):
+def move_to_center(g, axis="xyz", plot_geom=True,
+    sc=True, aid=False):
     """
     Move the geometry to the center of supercell
     """
@@ -176,7 +177,7 @@ def move_to_center(g, axis="xyz", plot_geom=True):
     g = g.translate([xvector, yvector, zvector])
 
     if plot_geom:
-        plot(g)
+        display2D(g, sc=sc, aid=aid)
         plt.axis("equal")
 
     return g
@@ -214,7 +215,7 @@ def move_to_zcenter(g, plot_geom=True):
     return gz
 
 
-def display2D(g, aid=False, sc=True, rotate=False, figsize=(10, 5),
+def display2D(g, aid=False, sc=True, rotate=False, figsize=(5, 5),
     text_color='green', text_font_size=16, **kwargs):
 
     mpl.rcParams['text.color'] = text_color
