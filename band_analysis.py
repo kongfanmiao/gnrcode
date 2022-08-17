@@ -1151,7 +1151,7 @@ def plot_eigst_band(
     eig = H.eigh(k=_k)
     num_occ = len(eig[eig < fermi_energy])
 
-    print("Index of the HOMO: ", num_occ - 1)
+    print("Index of the HOMO: ", num_occ)
     bands = []
     offset.sort()
     for i in offset:
@@ -1411,6 +1411,7 @@ def inter_zak(H, offset=0, fermi_energy=0.0):
                 )
             )
     occ = [i for i in range(occ0)]
+    print('Number of occupied bands: {}'.format(len(occ)))
     if offset == 0:
         occ = occ
     elif offset > 0:
@@ -1434,17 +1435,17 @@ def ssh(H, occ):
         H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, ["$\Gamma$", "$X$", "$\Gamma$"]
     )
 
-    occn = len(H) // 2 - 1
-    print("Index of the HOMO: ", occn)
+    occn = len(H) // 2
     bands = []
     occ.sort()
     for i in occ:
-        bands.append(occn + i)
-    print("Bands that are taken into account: ", bands)
+        bands.append(occn-1 + i)
+    print('Number of occupied bands: {}'.format(occn))
     gamma_inter = zak(bs, sub=bands, gauge="R")
+    bandsIdx = np.array(bands) + 1
+    print("Bands that are taken into account: ", bandsIdx)
 
     return round(gamma_inter, 10)
-
 
 @timer
 def zak_band(H, occ):
