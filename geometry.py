@@ -318,3 +318,52 @@ def attach_pz(g, basis="DZP"):
         pz = AtomicOrbital((r, f), n=2, l=1, m=0, Z=1)
     C = Atom(6, pz)
     g.atoms.replace(g.atoms[0], C)
+
+
+def find_sublattice(g:Geometry, bond_length=1.42):
+    """
+    Find the sublattice of a geometry and return the indices
+    """
+    # Start with atom 0
+    # Find the direction which has length of sqrt(3)*a
+    n = 1
+    while not (abs(g.rij(n,0)-bond_length*np.sqrt(3)) < 1e-4):
+        n += 1
+    # all atoms in the row that is parallel to v1 belong to 
+    # same sublattice
+    v1 = g.Rij(n,0)
+    # the vector that is perpendicular to v2
+    v2 = np.array([-v1[1], v1[0], 0])
+    v2 = v2/np.linalg.norm(v2)
+    # project vector Rij(0,a) to v2
+    # if it's 0, 1.5*1.42, 3*1.42, ..., it's sublattice A
+    # if it's 1.42, 2.5*1.42, 4*1.42, ..., it's sublattice B
+    Asublat = [0]
+    Bsublat = []
+    for i in range(g.na-1):
+        # atom index
+        a = i+1
+        proj = g.Rij(0,a).dot(v2)
+        tmp = (proj/1.42)/1.5
+        tmp = abs(tmp-np.floor(tmp))
+        if abs(tmp-1/3)<1e-3 or abs(tmp-2/3)<1e-3:
+            Bsublat.append(int(a))
+        else:
+            Asublat.append(int(a))
+    return Asublat, Bsublat
+
+
+    
+def mark_sublattice(g, figsize=[8,6]):
+    A, B = find_sublattice(g)
+    plt.figure(figsize=figsize)
+    plt.axis('equal')
+    xyz = a79s.xyz
+    Axyz = xyz[A,:]
+    Bxyz = xyz[B,:]
+    plt.scatter(Axyz[:,0], Axyz[:,1], 20, color='r')
+    plt.scatter(Bxyz[:,0], Bxyz[:,1], 20, color='b')
+    for i in range(len(A)):
+        plt.text(Axyz[i,0], Axyz[i,1], 'A', fontsize=12, color='r')
+    for i in range(len(B)):
+        plt.text(Bxyz[i,0], Bxyz[i,1], 'B', fontsize=12, color='b')
