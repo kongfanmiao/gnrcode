@@ -62,7 +62,7 @@ def construct_hamiltonian(gnr):
     r = (0.1, 1.44)
     t = (0.0, -2.7)
     H.construct([r, t])
-    print(H)
+    # print(H)
     return H
 
 
