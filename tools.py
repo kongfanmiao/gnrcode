@@ -1,6 +1,7 @@
 from sisl import *
 import os
 import time
+import re, regex
 import functools
 import numpy as np
 import matplotlib.pyplot as plt
@@ -147,3 +148,86 @@ def list_str(l):
         lnew = "[" + ",".join((f"{l[0]},{l[1]}", "...", f"{l[-2]},{l[-1]}")) + "]"
 
     return lnew
+
+
+def read_forces(name,path):
+    """
+    Read max force from .FA file
+    ouput max force, total force, and residual force in eV/Ang"""
+
+    fa = os.path.join(path,f'{name}.FA')
+    forces = np.loadtxt(fa, skiprows=1)[:,1:]
+    maxForce = np.max(np.abs(forces))
+    totForce = np.linalg.norm(np.sum(forces, axis=0))
+    resForce = np.sqrt(np.sum(np.square(forces))/forces.size) # residual
+
+    return maxForce, totForce, resForce
+
+
+def read_calc_time(name, path, which='all'):
+
+    # There is only .times file for parallel run. Try to read .times file first
+    try:
+        ftime = os.path.join(path, f'{name}.times')
+        with open(ftime) as f:
+            lines = f.read()
+        numNodes = int(re.search('Number of nodes\s*=\s*(\d+)', lines).group(1))
+        wallTime = float(re.search('Total elapsed wall-clock time.+=\s+(.+)', lines).group(1))
+        CPUtime = float(re.search('Tot:  Sum, Avge,.+=\s+([\d\.]+)\s+', lines).group(1))
+    except:
+        fout = glob(os.path.join(path,'*.out'))[0]
+        with open(fout) as f:
+            lines = f.read()
+        tStart = re.search('Start of run:\s*(\d+\-\w+\-\d{4}\s*\d+:\d+:\d+)\n', lines).group(1)
+        tEnd = re.search('End of run:\s*(\d+\-\w+\-\d{4}\s*\d+:\d+:\d+)\n', lines).group(1)
+        tStart = datetime.strptime(tStart, '%d-%b-%Y %H:%M:%S')
+        tEnd = datetime.strptime(tEnd, '%d-%b-%Y %H:%M:%S')
+        wallTime = (tEnd - tStart).total_seconds()
+        CPUtime = wallTime
+        numNodes = 1
+    if which.lower()=='nodes':
+        return numNodes
+    elif which.lower()=='walltime':
+        return wallTime
+    elif which.lower()=='cputime':
+        return CPUtime
+    elif which.lower() == 'all':
+        return numNodes, wallTime, CPUtime
+    else:
+        wallTime = time.strftime('%H:%M:%S', time.gmtime(wallTime))
+        CPUtime = time.strftime('%H:%M:%S', time.gmtime(CPUtime))
+        print(f"Number of nodes (processors): {numNodes}")
+        print(f"Total elapsed wall-clock time: {wallTime}")
+        print(f"Total CPU time: {CPUtime}")
+
+
+
+from itertools import combinations, permutations
+
+def read_bond_length(name, path):
+
+    "Read C-C and C-H bond length"
+    g = get_sile(os.path.join(path, f'{name}.XV')).read_geometry()
+
+    C_list = []
+    H_list = []
+    for i,a,_ in g.iter_species():
+        if a.Z == 6:
+            C_list.append(i)
+        elif a.Z == 1:
+            H_list.append(i)
+
+    CC_bonds = []
+    CH_bonds = []
+    for cc in combinations(C_list, 2):
+        r = g.rij(*cc)
+        if r < 1.9:
+            CC_bonds.append(r)
+    CC_bond = sum(CC_bonds)/len(CC_bonds)
+    for c in C_list:
+        for h in H_list:
+            r = g.rij(c,h)
+            if r < 1.2:
+                CH_bonds.append(r)
+    CH_bond = sum(CH_bonds)/len(CH_bonds)
+    return CC_bond, CH_bond
