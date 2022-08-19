@@ -111,7 +111,8 @@ def create_geometry(
     name, path=None,
     cell=[[10, 0, 0], [0, 10, 0], [0, 0, 10]],
     bond=1.42,
-    plot_geom=True
+    plot_geom=True,
+    figsize=[5,5]
 ) -> Geometry:
     """
     Read coordinates from .xyz file, move the geometry center to origin
@@ -142,7 +143,7 @@ def create_geometry(
 
     geom = Geometry(coordinates, atoms, cell)
     if plot_geom:
-        display2D(geom, aid=True)
+        display2D(geom, aid=True, figsize=figsize)
         plt.axis("equal")
 
     return geom
