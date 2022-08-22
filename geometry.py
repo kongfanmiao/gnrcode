@@ -15,7 +15,7 @@ def adjust_axes(
     rx=None,
     ry=None,
     CC_bond_length=None,
-    plot_geom=True,
+    plot_geom=False,
 ):
     """
     Rotate the geometry in xy plane to align the periodic direction along x axis
@@ -223,11 +223,11 @@ def display2D(g, aid=False, sc=True, rotate=False, figsize=(5, 5),
     mpl.rcParams['font.size'] = text_font_size
     xyz = g.xyz
     minxyz = np.amin(xyz, 0)
-    print("minxyz:", minxyz)
+    print("minxyz:", np.around(minxyz, 4))
     maxxyz = np.amax(xyz, 0)
-    print("maxxyz:", maxxyz)
+    print("maxxyz:", np.around(maxxyz,2))
     length = maxxyz - minxyz
-    print("size:", length)
+    print("size:", np.around(length,4))
 
     plt.figure(figsize=figsize)
     if rotate:
