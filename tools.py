@@ -203,6 +203,35 @@ def read_calc_time(name, path, which='all'):
 
 
 
+def read_final_energy(name, path="./opt", which=None):
+    outfile = name + ".out"
+    filepath = os.path.join(path, outfile)
+    with open(filepath) as fout:
+        lines = fout.read()
+    ergStr = regex.search('(?<=siesta: Final energy \(eV\):\n)(.+=.+\n)+', 
+                            lines).group(0)
+    rawList = regex.findall('siesta: .+=.+', ergStr)
+    ergDict = dict()
+    for s in rawList:
+        [key, value] = s[7:].split('=')
+        key = key.strip()
+        value = float(value)
+        ergDict[key] = value
+    if which:
+        which = which.split(",")
+        retlist = []
+        for s in which:
+            for key in ergDict.keys():
+                if key.lower() == s.strip().lower():
+                    retlist.append(ergDict[key])
+        if len(retlist) == 1:
+            retlist = retlist[0]
+        return retlist
+    else:
+        print("Total energy: {} eV".format(ergDict["Total"]))
+        print("Fermi energy: {} eV".format(ergDict["Fermi"]))
+
+
 from itertools import combinations, permutations
 
 def read_bond_length(name, path):
