@@ -24,33 +24,6 @@ kpoints_dict = {
     "K": ("$K$", [2.0 / 3, 1.0 / 3, 0]),
 }
 
-def read_final_energy(name, path="./opt", which=None):
-    outfile = name + ".out"
-    filepath = os.path.join(path, outfile)
-    with open(filepath) as fout:
-        lines = fout.read()
-    ergStr = regex.search('(?<=siesta: Final energy \(eV\):\n)(.+=.+\n)+', 
-                            lines).group(0)
-    rawList = regex.findall('siesta: .+=.+', ergStr)
-    ergDict = dict()
-    for s in rawList:
-        [key, value] = s[7:].split('=')
-        key = key.strip()
-        value = float(value)
-        ergDict[key] = value
-    if which:
-        which = which.split(",")
-        retlist = []
-        for s in which:
-            for key in ergDict.keys():
-                if key.lower() == s.strip().lower():
-                    retlist.append(ergDict[key])
-        if len(retlist) == 1:
-            retlist = retlist[0]
-        return retlist
-    else:
-        print("Total energy: {} eV".format(ergDict["Total"]))
-        print("Fermi energy: {} eV".format(ergDict["Fermi"]))
 
 
 def read_dushin_out(file_path="./dushin.out"):
@@ -1631,7 +1604,8 @@ def plot_wannier_centers(
     if not path:
         path = "./s2w/"
     cell = geom.cell
-    gcenter = geom.center()
+    gcenter = geom.center(what='xyz')
+    ccenter = geom.center(what='cell')
     abc = cell.diagonal()
     file_path = os.path.join(path, name + "_centres.xyz")
     with open(file_path) as f:
@@ -1648,12 +1622,16 @@ def plot_wannier_centers(
         # Translate wannier centres to home cell
         wc_hc = wc - np.floor((wc - (gcenter - abc / 2)) / abc).dot(cell)
         # sum of wannier centers
-        wcs_hc = wc_hc.sum(0)
-        temp = wcs_hc.dot(np.linalg.inv(cell))
-        wcs_rel_frac = temp - np.floor(temp)
-        wcs_rel = np.dot(wcs_rel_frac, cell)
-        print("Sum of Wannier centres (Relative Fractional):\n\t", wcs_rel_frac)
-        print("Sum of Wannier centres (Relative):\n\t", wcs_rel)
+        wcc = wc_hc.sum(0)
+        temp = wcc.dot(np.linalg.inv(cell))
+        wcc = temp - np.floor(temp)
+        wcc_abs = np.around(wcc.dot(cell),4)
+        wcc_rel_frac = wcc - ccenter.dot(np.linalg.inv(cell))
+        wcc_rel = wcc_rel_frac*cell
+        wcc_rel_frac = np.around(wcc_rel_frac, 4)
+        print("Sum of Wannier centres (Absolute):\n\t", wcc_abs)
+        # print("Sum of Wannier centres (Relative):\n\t", wcc_rel)
+        print("Sum of Wannier centres (Relative Fractional):\n\t", wcc_rel_frac)
         
     plt.figure(figsize=figsize)
     plot(geom, supercell=sc)
