@@ -40,8 +40,8 @@ def write_siesta_runfile(
         soc_strength=1.0,
         denchar=False,
         wfs_write_for_kpts=False,
-        wfs_kpts: list = None,
         wfs_write_for_bands=False,
+        wfs_kpts: list = None,
         wfs_bands_range: list = None,
         E_field: list = None,
         slab_dipole_correction=False,
@@ -61,6 +61,7 @@ def write_siesta_runfile(
         max_disp_len=0.05,
         max_force_tol=0.01,
         scf_H_tol=1e-3,
+        electronic_temperature=300
 ):
     """
     Write Siesta input file
@@ -140,6 +141,8 @@ MeshCutoff              {mesh_cutoff} Ry
     0   0   {mp3}  0.0
 %endblock kgrid.MonkhorstPack
 
+ElectronicTemperature   {electronic_temperature} K
+
 ############################################
 #   Molecular Dynamics
 ############################################
@@ -187,8 +190,8 @@ WriteForces             T   # Write forces of each MD step to output file
 TS.HS.Save              T
 CDF.Save                T
 CDF.Compress            3
-WFS.Energy.Min          -30 eV
-WFS.Energy.Max          30 eV
+WFS.Energy.Min          -20 eV
+WFS.Energy.Max          20 eV
 """)
 #------------------------------------------------------------------------------#
         # calculate band structure
@@ -506,10 +509,12 @@ Denchar.NumberPointsZ   {znpts:1d}
 
 def write_win_file(
         geom: Geometry, name, path="./s2w",
+        restart = None,
         tot_num_bands=None,
         num_ex_bands=None,
         num_wann=None,
         proj_orbs="C:pz",
+        select_proj=None,
         kmesh=[12, 1, 1],
         dis_win_max=None,
         dis_win_min=None,
@@ -525,10 +530,12 @@ def write_win_file(
     """
     Write input file for Wannier90 calculation
     Args:
+        restart: restart from 'default', 'wannierise', 'plot', or 'transport'
         tot_num_bands: Total number of bands
         num_ex_bands: Number of excluded bands (from 1 to num_ex_bands)
         num_wann: Number of bands to be wannierzed
         proj_orbs: projected orbitals
+        select_proj: selected projections
         kmesh: k point mesh, CAVEAT: currectly only works for 1D system
         dis_win_max: Maximum of disentangle energy window
         dis_win_min: Minimum of disentangle energy window
@@ -551,10 +558,10 @@ def write_win_file(
         num_wann = int(len(C_atoms)/2)
     num_bands = tot_num_bands - num_ex_bands if num_ex_bands else tot_num_bands
 
-    # proj_orb = ''
-    # for i in range(num_wann):
-    #     proj_orb += f'{2*i+1} '
-    proj_orb_idx = f'1-{num_wann}'
+    if select_proj:
+        proj_orb_idx = select_proj
+    else:
+        proj_orb_idx = f'1-{num_wann}'
     
     if not fermi_energy:
         # read fermi energy from siesta output
@@ -564,6 +571,8 @@ def write_win_file(
 
     with open(os.path.join(path, f"{name}.win"), 'w') as f:
         f.write(f"! {KFM} created at {get_datetime()}\n")
+        if restart:
+            f.write(f'restart = {restart}\n')
         f.write(f"""
 num_bands   =   {num_bands}
 num_wann    =   {num_wann}""")
@@ -590,7 +599,7 @@ begin projections""")
 end projections
 
 search_shells = {}
-num_iter	=	500
+num_iter	=	200
 write_hr	=	true
 write_tb	=	true
 write_xyz   =   true
@@ -844,27 +853,115 @@ MD.FCdispl      < FC.fdf   # Displacement to use for the computation of the
 """)
 
 
-def write_xcrysden_shell_script(
-        path,
-        keyword,
-        file_format="cube",
-        bash_file="export_xcrysden.sh",
-        xcrysden_state_file="state_real.xcrysden"):
+# def write_xcrysden_shell_script(
+#         path,
+#         keyword,
+#         file_format="cube",
+#         bash_file="export_xcrysden.sh",
+#         xcrysden_state_file="state_real.xcrysden"):
+#     """
+#     Write shell script to run XCrySDen automatically.
+#     The xcrysden state file should be named as state.xcrysden
+#     """
+
+#     file_path = os.path.join(path, bash_file)
+#     with open(file_path, 'w') as f:
+#         f.write(f"""
+# for input in `ls {keyword}`; do
+#     cp {xcrysden_state_file} tmp.xcrysden
+#     filename="${{input%.*}}.png"
+#     echo "
+# scripting::printToFile $filename windowdump
+# exit 0" >> tmp.xcrysden;
+#     xcrysden --{file_format} $input --script tmp.xcrysden;
+#     rm -f tmp.xcrysden;
+# done
+# """)
+
+
+def write_sbatch_file(name, path, program='siesta', cluster='htc',
+    time=10, num_nodes=1, num_tasks_per_node=48, partition='short',
+    job_name=None, memory=None):
     """
-    Write shell script to run XCrySDen automatically.
-    The xcrysden state file should be named as state.xcrysden
+    Prepare the bash file for sbatch
+    Args:
+        program: 'siesta' or 'orca'
+        cluster: 'htc' or 'arc' or 'all'
+        time: in hours
+        num_nodes: number of nodes
+        num_tasks_per_node: number of tasks per node
+        partition: 'short' (time <= 12), medium (12 < time <= 24), or long
+            (time >= 24)
+        job_name: job name
+        memory: by default 8000M per task
     """
 
-    file_path = os.path.join(path, bash_file)
-    with open(file_path, 'w') as f:
-        f.write(f"""
-for input in `ls {keyword}`; do
-    cp {xcrysden_state_file} tmp.xcrysden
-    filename="${{input%.*}}.png"
-    echo "
-scripting::printToFile $filename windowdump
-exit 0" >> tmp.xcrysden;
-    xcrysden --{file_format} $input --script tmp.xcrysden;
-    rm -f tmp.xcrysden;
+    if not memory:
+        memory = num_tasks_per_node*8000
+    if not job_name:
+        p = path.split('/')[-1]
+        job_name = name+p
+    if program == 'siesta':
+        load_module = 'module load Siesta/4.1.5-foss-2020a'
+        run_cmd = 'mpirun siesta < $name\_RUN.fdf > $name.out'
+    elif program == 'orca':
+        load_module = 'module load ORCA/5.0.3-gompi-2021b'
+        run_cmd = '$EBROOTORCA/orca $name.inp > $name.out'
+    
+    with open(os.path.join(path, f'run_{program}.sh'),'w') as sh:
+        sh.write(f"""#!/bin/bash
+
+#SBATCH --clusters={cluster}
+#SBATCH --nodes={num_nodes}
+#SBATCH --time={time}:00:00
+#SBATCH --ntasks-per-node={num_tasks_per_node}
+#SBATCH --partition={partition}
+#SBATCH --mem={memory}
+#SBATCH --job-name={job_name}
+#SBATCH --mail-user=fanmiao.kong@materials.ox.ac.uk
+#SBATCH --mail-type=ALL
+
+{load_module}
+
+name="{name}"
+{run_cmd}""")
+
+
+
+
+def write_submit_all_file(path, dirs:list, program='siesta'):
+    """
+    Write bash file to submit all jobs
+    Args:
+        path: path to write submit_all.sh file
+        dirs: directories that contains run_{program} files
+        program: 'siesta' or 'orca'
+    """
+    dirs = ' '.join(dirs)
+    with open(os.path.join(path, 'submit_all.sh'), 'w') as sh:
+        sh.write(f"""
+for name in {dirs}; do
+    cd $name
+    sbatch run_{program}.sh
+    cd ..
 done
 """)
+
+
+
+def copy_psf_files(path, elements, functional):
+    """
+    Copy pseudopotential files
+    Args:
+        path: destination
+        elements: string of elements, eg. 'C,H'
+        functional: 'GGA' or 'LDA'
+    """
+    from shutil import copyfile
+    elements = elements.strip().split(',')
+    path_from = f'/mnt/d/kfm/Computation/dft/pseudopotentials/{functional}'
+    for e in elements:
+        e = e.strip()
+        psf_src = os.path.join(path_from, f'{e}.psf')
+        psf_dst = os.path.join(path, f'{e}.psf')
+        copyfile(psf_src, psf_dst)
