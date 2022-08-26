@@ -14,12 +14,14 @@ set isoWindowID [exec echo $isoWindow | cut -d " " -f 1]
 set mainWindowSize [exec echo $mainWindow | grep "\[0-9\]*x\[0-9\]*+\[0-9\]*+\[0-9\]*" -o | cut -d "+" -f 1]
 set xMove [exec echo $mainWindowSize | cut -d "x" -f 1]
 set yMove [exec echo $mainWindowSize | cut -d "x" -f 2]
+set xMove [expr $xMove * 2]
+set yMove [expr $yMove * 2]
 
 exec xwit -id $isoWindowID -move $xMove $yMove
 
 # Print
 scripting::printToFile '"$filename
 exit 0" >> tmp.xcrysden;
-    xcrysden --cube $input --script tmp.xcrysden || exit 1;
+    xcrysden --xsf $input --script tmp.xcrysden || exit 1;
 done
 rm -f tmp.xcrysden;

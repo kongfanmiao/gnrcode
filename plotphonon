@@ -1,0 +1,11 @@
+#!/bin/bash
+
+for input in "${@:2}"; do
+    cp $1 tmp.xcrysden
+    filename="${input%.*}.png"
+    echo "
+scripting::printToFile $filename
+exit 0" >> tmp.xcrysden;
+    xcrysden --xsf $input --script tmp.xcrysden || exit 1;
+done
+rm -f tmp.xcrysden;
