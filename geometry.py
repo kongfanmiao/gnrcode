@@ -333,7 +333,7 @@ def find_sublattice(g:Geometry, bond_length=1.42):
     # Start with atom 0
     # Find the direction which has length of sqrt(3)*a
     n = 1
-    while not (abs(g.rij(n,0)-bond_length*np.sqrt(3)) < 1e-4):
+    while not (abs(g.rij(n,0)-bond_length*np.sqrt(3)) < 0.05):
         n += 1
     # all atoms in the row that is parallel to v1 belong to 
     # same sublattice
@@ -352,12 +352,11 @@ def find_sublattice(g:Geometry, bond_length=1.42):
         proj = g.Rij(0,a).dot(v2)
         tmp = (proj/1.42)/1.5
         tmp = abs(tmp-np.floor(tmp))
-        if abs(tmp-1/3)<1e-3 or abs(tmp-2/3)<1e-3:
+        if abs(tmp-1/3)<0.05 or abs(tmp-2/3)<0.05:
             Bsublat.append(int(a))
         else:
             Asublat.append(int(a))
     return Asublat, Bsublat
-
 
     
 def mark_sublattice(g, figsize=[8,6]):
