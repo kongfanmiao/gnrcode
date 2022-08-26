@@ -50,7 +50,7 @@ def write_siesta_runfile(
         num_bands_to_wannier=None,
         num_bands_to_wannier_up=None,
         num_bands_to_wannier_down=None,
-        s2w_grid=[30, 30, 30],
+        s2w_mesh=2,
         diag_algorithm="Divide-and-Conquer",
         num_eigenstates=None,
         cdf=True,
@@ -91,8 +91,8 @@ def write_siesta_runfile(
         num_bands_to_wannier_up: Number of spin up bands to be wannierized. If 
             not given, Siesta will use same value as bands_to_wannier
         num_bands_to_wannier_down: Similar to num_bands_to_wannier_up, but for spin down
-        s2w_grid: Mesh grid points along three lattice vector directions to plot
-            wavefunctions during Siesta2Wannier90 calculation
+        s2w_mesh: Mesh grid size per Angstrom during Siesta2Wannier90 calculation. The default
+            is 2, which means 2 mesh points for each Angstrom
         diag_algorithm: By default it's Divide-and-Conquer. If job is to send to
             ARC, then use "expert" instead
         cdf: Use NetCDF utility or not
@@ -118,8 +118,10 @@ def write_siesta_runfile(
     def check_directory(calc_type):
         # for some calculations, create new directory for them. This method will
         # raise error if we are still working in the ./opt directory
-        if path == "./opt":
-            raise ValueError(f"Dont't Work in directory ./opt for {calc_type}")
+        # if path == "./opt":
+        #     raise ValueError(f"Dont't Work in directory ./opt for {calc_type}")
+        pass
+
     mp1, mp2, mp3 = mpgrid
     with open(os.path.join(path, run_file), 'w') as f:
         f.write(f"# {KFM} created at {get_datetime()}\n")
@@ -306,6 +308,7 @@ SlabDipoleCorrection    {}
         # Interface with Wannier90
         if wannier90:
             check_directory("interfacing with Wannier90")
+            s2w_grid = np.rint(geom.cell.diagonal()*s2w_mesh).astype(np.int0)
             f.write("""
 ############################################
 #   Interface with Wannier90
@@ -315,9 +318,9 @@ Siesta2Wannier90.WriteAmn       T
 Siesta2Wannier90.WriteEig       T
 Siesta2Wannier90.WriteUnk       T
 Siesta2Wannier90.UnkGridBinary  T
-Siesta2Wannier90.UnkGrid1       {}
-Siesta2Wannier90.UnkGrid2       {}
-Siesta2Wannier90.UnkGrid3       {}""".format(*s2w_grid))
+Siesta2Wannier90.UnkGrid1       {:d}
+Siesta2Wannier90.UnkGrid2       {:d}
+Siesta2Wannier90.UnkGrid3       {:d}""".format(*s2w_grid))
             if spin_mode == "non-polarized":
                 # NumberOfBands is by default all occupied bands
                 if num_bands_to_wannier:
@@ -525,7 +528,8 @@ def write_win_file(
         wa_plot_sc=[3, 1, 1],
         kmesh_tol=1e-6,
         search_shells=36,
-        fermi_energy=None
+        fermi_energy=None,
+        wannier_plot_mode='crystal'
 ):
     """
     Write input file for Wannier90 calculation
@@ -545,6 +549,10 @@ def write_win_file(
         guiding_centres: Use guiding centres or not
         wa_plot_sc: paramater for wannier_plot_supercell
         kmesh_tol: k mesh tolerance
+        search_shells: search shells
+        fermi_energy: fermi energy. If nothing is provide, read from .out file
+            in currect directory
+        wannier_plot_mode: crystal (default) or molecule
     """
 
     # by default we exclude all the s bands, this already gives very good result
@@ -595,27 +603,28 @@ select_projections: {proj_orb_idx}
 begin projections""")
         for orbs in proj_orbs.strip().split():
             f.write(f"\n{orbs}")
-        f.write("""
+        wp1, wp2, wp3 = wa_plot_sc
+        f.write(f"""
 end projections
 
-search_shells = {}
+search_shells = {search_shells}
 num_iter	=	200
 write_hr	=	true
 write_tb	=	true
 write_xyz   =   true
 translate_home_cell =   true
-guiding_centres =  {}
+guiding_centres =  {guiding_centres}
 iprint : 3
 !trial_step  =   1.0
 
 !bands_plot      =   true
 wannier_plot    =   true
-wannier_plot_supercell  =  {}, {}, {}
-!wannier_plot_mode = molecule
-kmesh_tol = {}
+wannier_plot_supercell  =  {wp1}, {wp2}, {wp3}
+wannier_plot_mode = {wannier_plot_mode}
+kmesh_tol = {kmesh_tol}
 
 begin unit_cell_cart
-Ang""".format(search_shells, guiding_centres, *wa_plot_sc, kmesh_tol))
+Ang""".format(*wa_plot_sc))
         # write unit cell
         for i in range(len(geom.cell)):
             f.write("\n  {:.10f}\t{:.10f}\t{:.10f}".format(*geom.cell[i]))
@@ -884,6 +893,7 @@ def write_sbatch_file(name, path, program='siesta', cluster='htc',
     job_name=None, memory=None):
     """
     Prepare the bash file for sbatch
+
     Args:
         program: 'siesta' or 'orca'
         cluster: 'htc' or 'arc' or 'all'
