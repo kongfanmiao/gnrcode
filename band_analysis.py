@@ -1637,3 +1637,80 @@ def plot_wannier_centers(
     plot(geom, supercell=sc)
     plt.scatter(wc_hc[:, 0], wc_hc[:, 1], s=marker_size, c=marker_color, marker=marker)
     plt.axis("equal")
+
+
+
+
+def chiral_phase_index(H, knpts=200, plot_phase=False):
+
+    from numpy.linalg import det
+    from numpy import angle
+
+    phases = []
+    # phases2 = []
+    g = H.geometry
+    Aidx, Bidx = find_sublattice(g)
+    N = len(Aidx)
+
+    def off_diagonalize(M:np.ndarray):
+        # Bring a matrix to off-diagonalized form
+        Mnew = np.zeros((2*N,2*N), dtype=np.complex128)
+        for i in range(N):
+            for j in range(N):
+                Mnew[i,j] = M[Aidx[i],Aidx[j]]
+                Mnew[i,N+j] = M[Aidx[i],Bidx[j]]
+                Mnew[N+i,j] = M[Bidx[i],Aidx[j]]
+                Mnew[N+i,N+j] = M[Bidx[i],Bidx[j]]
+        return Mnew
+
+    k = np.linspace(0,1,knpts)
+    kiter = (i for i in k)
+    k_prev = next(kiter)
+    k_first = k_prev
+    # modified eigenvalue matrix
+    eig_mod = np.kron(np.array([[-1,0],[0,1]]), np.eye(N))
+    states_prev = H.eigenstate(k=[k_prev,0,0]).state
+    Qk_prev = states_prev.T.dot(eig_mod).dot(states_prev.conj())
+    Uk_prev = off_diagonalize(Qk_prev)[:N,N:]
+    for i in range(knpts-1):
+        k_second = next(kiter)
+        states_second = H.eigenstate(k=[k_second,0,0]).state
+        Qk_second = states_second.T.dot(eig_mod).dot(states_second.conj())
+        Uk_second = off_diagonalize(Qk_second)[:N,N:]
+        detUk = det(Uk_prev.conj().T.dot(Uk_second))
+        ph = angle(detUk)
+        phases.append(ph)
+
+        # Hk_prev = H.Hk(k=[k_prev,0,0], format='array')
+        # Uk_prev = off_diagonalize(Hk_prev)[:N,N:]
+        # Hk_second = H.Hk(k=[k_second,0,0], format='array')
+        # Uk_second = off_diagonalize(Hk_second)[:N,N:]
+        # detUk = det(Uk_prev.conj().T.dot(Uk_second))
+        # eigUk = np.linalg.eig(Uk_prev)
+        # ph = angle(detUk)
+
+        k_prev = k_second
+        Uk_prev = Uk_second
+    k_second = k_first
+    states_second = H.eigenstate(k=[k_second,0,0]).state
+    Qk_second = states_second.T.dot(eig_mod).dot(states_second.conj())
+    Uk_second = off_diagonalize(Qk_second)[:N,N:]
+    detUk = det(Uk_prev.conj().T.dot(Uk_second))
+    ph = angle(detUk)
+    phases.append(ph)
+    phases = np.array(phases)
+    
+    sumPhases = phases.sum()
+    Z = np.around(sumPhases/2/np.pi,5)
+    
+    if plot_phase:
+        cumPhases = phases.cumsum()
+        rads = np.linspace(1, abs(Z)*1.2, cumPhases.shape[0])
+        plt.plot(np.multiply(rads, np.cos(cumPhases)), 
+                 np.multiply(rads, np.sin(cumPhases)))
+        # plt.scatter(np.linspace(0,1,knpts),phases, 50, marker='*')
+        # plt.xticks([0,0.25,0.5,0.75,1])
+        plt.axis('equal')
+
+    return Z
+
