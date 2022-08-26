@@ -112,6 +112,10 @@ def create_geometry(
     cell=[[10, 0, 0], [0, 10, 0], [0, 0, 10]],
     bond=1.42,
     plot_geom=True,
+    aid=True,
+    sc=False,
+    text_color='green', 
+    text_font_size=16,
     figsize=[5,5]
 ) -> Geometry:
     """
@@ -143,7 +147,8 @@ def create_geometry(
 
     geom = Geometry(coordinates, atoms, cell)
     if plot_geom:
-        display2D(geom, aid=True, figsize=figsize)
+        display2D(geom, aid=aid, sc=sc, text_color=text_color, 
+        text_font_size=text_font_size, figsize=figsize)
         plt.axis("equal")
 
     return geom
