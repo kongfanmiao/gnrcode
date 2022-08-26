@@ -261,3 +261,13 @@ def read_bond_length(name, path):
                 CH_bonds.append(r)
     CH_bond = sum(CH_bonds)/len(CH_bonds)
     return CC_bond, CH_bond
+
+
+
+def read_interpolated_ham(name, path):
+    """
+    Read interpolated Hamiltonian from Wannier90 calculation
+    """
+    win = get_sile(os.path.join(path, f'{name}.win'))
+    Hint = win.read_hamiltonian()
+    return Hint
