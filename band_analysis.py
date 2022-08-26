@@ -548,11 +548,11 @@ def chain_hamiltonian(Huc, nc: int, **kwargs):
 @timer
 def energy_levels(
     H,
-    Erange=[-5, 5],
+    Erange=[-3,3],
     figsize=(1, 5),
     index=False,
     color="darkslategrey",
-    shift=0.0,
+    fermi_energy=0.0,
     **kwargs,
 ):
     """
@@ -561,7 +561,7 @@ def energy_levels(
     eig = H.eigh()
     plt.figure(figsize=figsize)
     # use Hermitian solver, read values
-    plt.hlines(eig + shift, 0, 1, color=color, **kwargs)
+    plt.hlines(eig - fermi_energy, 0, 1, color=color, **kwargs)
     plt.ylim(Erange[0], Erange[-1])
     plt.ylabel("$E-E_F$ (eV)")
     plt.xticks([])
@@ -569,7 +569,7 @@ def energy_levels(
     if index:  # label the index of energy levels
         which = np.where(np.logical_and(eig < Erange[-1], eig > Erange[0]))[0]
         for i in which:
-            plt.text(11, eig[i], str(i))
+            plt.text(1.2, eig[i], str(i))
 
 
 @timer
@@ -1598,7 +1598,7 @@ def plot_wannier_centers(
     figsize=(6, 4),
     sc=False,
     marker="*",
-    marker_size=5,
+    marker_size=200,
     marker_color="green",
 ):
     if not path:
