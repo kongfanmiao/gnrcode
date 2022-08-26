@@ -1,5 +1,6 @@
 import os
-import re, regex
+import re
+import regex
 from matplotlib import lines
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,11 +20,10 @@ from typing import List, Tuple, Union, Dict
 
 kpoints_dict = {
     "G": ("$\Gamma$", [0, 0, 0]),
-    "X": ("$X$", [0.5, 0., 0.]), 
+    "X": ("$X$", [0.5, 0., 0.]),
     "M": ("$M$", [0.5, 0.5, 0]),
     "K": ("$K$", [2.0 / 3, 1.0 / 3, 0]),
 }
-
 
 
 def read_dushin_out(file_path="./dushin.out"):
@@ -78,7 +78,8 @@ def read_dushin_out(file_path="./dushin.out"):
             if " Summs projected onto state" in line:
                 # shouldn't be more than two blanks between works in the label
                 line = list(filter(None, line.strip().split("   ")))
-                info = "Ground state: {}, Excited state: {}".format(line[-2], line[-1])
+                info = "Ground state: {}, Excited state: {}".format(
+                    line[-2], line[-1])
                 results["info"] = info
             if "total reorg energies in eV" in line:
                 line = list(filter(None, line.strip().split()))
@@ -108,11 +109,9 @@ def get_Hamiltonian_with_spin(H):
     return H1, H2
 
 
-
-
-def num_occ(H,k=[0,0,0]):
+def num_occ(H, k=[0, 0, 0]):
     e = H.eigh(k)
-    return e[e<0].shape[0]
+    return e[e < 0].shape[0]
 
 
 @timer
@@ -128,28 +127,27 @@ def band_structure(
     knpts=200,
     tb=True,
     spin_polarized=False,
-    legend_position = [1.1,0.9],
+    legend_position=[1.1, 0.9],
     **kwargs,
 ):
-
     """
     Arguments:
         tb: if in tight binding formalism
         spin_polarized: spin polarized mode or not
     """
     if name:
-        tb=False
+        tb = False
     tkls = list(tick_labels)
     # Position of ticks in Brillouin zone
     tks = []
     for i, v in enumerate(tick_labels):
         tkls[i] = kpoints_dict[v][0]
         tks.append(kpoints_dict[v][1])
-    
-    bsar = [] # BandStructure array object list
+
+    bsar = []  # BandStructure array object list
     if spin_polarized:
         # Define figure properties
-        label= ['spin up', 'spin down']
+        label = ['spin up', 'spin down']
         linestyle = ['-', '--']
         color = ['r', 'b']
         # Extract Hamiltonian matrix
@@ -165,8 +163,8 @@ def band_structure(
         bsar.append(bsar2)
         # linear k mesh, k ticks, k tick labels
         lk, kt, kl = bs1.lineark(True)
-        eigfile = [os.path.join(path, f'{n}.eig.{tick_labels}{knpts}.txt') for 
-            n in [name_up, name_dn]]
+        eigfile = [os.path.join(path, f'{n}.eig.{tick_labels}{knpts}.txt') for
+                   n in [name_up, name_dn]]
     else:
         label = [None]
         linestyle = ['-']
@@ -178,7 +176,7 @@ def band_structure(
         eigfile = [os.path.join(path, f"{name}.eig.{tick_labels}{knpts}.txt")]
     # try to read eigenvalues from file, if not exist then create one
     eigh = []
-    
+
     # If it's in tight binding mode, then calculate the bands
     if tb:
         eigh.append(bsar[0].eigh())
@@ -189,7 +187,8 @@ def band_structure(
                     eig = np.loadtxt(f)
                 assert len(eig) != 0
             except:
-                print(f"eig file {eigfile[i]} not found or empty. Now calculate new eig")
+                print(
+                    f"eig file {eigfile[i]} not found or empty. Now calculate new eig")
                 eig = bsar[i].eigh()
                 # Usually the eigenvalues are shifted to Fermi energy by sisl already
                 eig += shift
@@ -202,20 +201,21 @@ def band_structure(
     plt.ylim(Erange[0], Erange[-1])
     plt.xlim(0, lk[-1])
     plt.ylabel("$E-E_F$ (eV)")
-    
+
     # iterate spin
     for i, e in enumerate(eigh):
         # iterate bands
         for j, ek in enumerate(e.T):
-            lb = label[i] if j==0 else None
-            plt.plot(lk, ek, linestyle=linestyle[i], color=color[i], 
-                label=lb)
+            lb = label[i] if j == 0 else None
+            plt.plot(lk, ek, linestyle=linestyle[i], color=color[i],
+                     label=lb)
             # mark the band index
             if index:
                 if Erange[0] < ek[-1] < Erange[1]:
                     plt.annotate(j + 1, (lk[-1], ek[0]))
     if spin_polarized:
         plt.legend(bbox_to_anchor=legend_position)
+
 
 def read_bands(
     name, path="./opt", as_dataarray=True, squeeze=True
@@ -241,26 +241,26 @@ def read_bands(
     except:
         pass
     return bands
-  
+
 
 @timer
-def plot_bands(name, path, 
-               Erange=[-3,3],
-               figsize=[6,4],
+def plot_bands(name, path,
+               Erange=[-3, 3],
+               figsize=[6, 4],
                ticks_font=12,
                label_font=12,
                ticklabels=None,
-):
+               ):
     bandsile = get_sile(os.path.join(path, f'{name}.bands'))
     bands = bandsile.read_data(as_dataarray=True)
     if ticklabels:
         bands.ticklabels[:] = ticklabels
-    
+
     for i in range(len(bands.ticklabels)):
         if bands.ticklabels[i] == 'Gamma':
             bands.ticklabels[i] = '\Gamma'
         bands.ticklabels[i] = '$'+bands.ticklabels[i]+'$'
-    
+
     ks = bands.k.data
     plt.figure(figsize=figsize)
     # set y axis limit if Energy range is given
@@ -270,33 +270,32 @@ def plot_bands(name, path,
     else:
         emin, emax = -1e2, 1e6
     plt.ylabel("$E-E_F$ (eV)", fontsize=label_font)
-    plt.xticks(bands.ticks,bands.ticklabels)
+    plt.xticks(bands.ticks, bands.ticklabels)
     plt.xlim([min(bands.ticks), max(bands.ticks)])
     plt.tick_params(axis='x', labelsize=ticks_font)
     plt.tick_params(axis='y', labelsize=ticks_font)
     # plot the data
     for i in range(bands.shape[2]):
-        band = bands[:,:,i]
+        band = bands[:, :, i]
         # spin unpolarized
         if bands.shape[1] == 1:
             # select the bands that are in the given energy window
             if np.any(np.logical_and(band > emin, band < emax)):
-                plt.plot(ks, band[:,0], color="k")
+                plt.plot(ks, band[:, 0], color="k")
         # spin polarized
         elif bands.shape[1] == 2:
             # select the bands that are in the given energy window
             if np.any(np.logical_and(band > emin, band < emax)):
-                plt.plot(ks, band[:,0], color='r', linestyle='-')
-                plt.plot(ks, band[:,1], color='b', linestyle='--')
+                plt.plot(ks, band[:, 0], color='r', linestyle='-')
+                plt.plot(ks, band[:, 1], color='b', linestyle='--')
 
     if bands.shape[1] == 2:
         from matplotlib.lines import Line2D
         custom_lines = [Line2D([0], [0], color='r', linestyle='-'),
                         Line2D([0], [0], color='b', linestyle='--')]
-        plt.legend(custom_lines, ['spin up', 'spin down'], bbox_to_anchor=[1.1, 0.9])
-        
-        
-        
+        plt.legend(custom_lines, ['spin up', 'spin down'],
+                   bbox_to_anchor=[1.1, 0.9])
+
 
 @timer
 def interpolated_bs(
@@ -341,7 +340,8 @@ def interpolated_bs(
         knpts_int = npts
         knpts_pr = 400
         if not Hpr:
-            raise ValueError("Please provide the pristine Hamiltonian overlap is True")
+            raise ValueError(
+                "Please provide the pristine Hamiltonian overlap is True")
         bs_pr = BandStructure(Hpr, tks, knpts_pr, tkls)
         bsar_pr = bs_pr.apply.array
         eigh_pr = bsar_pr.eigh()
@@ -411,7 +411,8 @@ def unfold_band(
         # straight vector
         angle = np.arctan(xyz[:, 1] / xyz[:, 0])
         r = np.linalg.norm(xyz[0, :])
-        xyz = np.vstack((r * angle, np.zeros(len(angle)), np.zeros(len(angle)))).T
+        xyz = np.vstack(
+            (r * angle, np.zeros(len(angle)), np.zeros(len(angle)))).T
     # band lines scale
     bdlscale = np.pi / lat_vec
     G = H.rcell[0, 0]
@@ -452,11 +453,12 @@ def unfold_band(
 def band_gap(H, name=None, path="./opt", tb=True):
 
     if name:
-        tb=False
-        
+        tb = False
+
     rlv = np.int0(~(np.array(H.nsc) == 1))
     bs = BandStructure(
-        H, [[0, 0, 0], list(0.5 * rlv), list(rlv)], 200, ["$\Gamma$", "X", "$\Gamma$"]
+        H, [[0, 0, 0], list(0.5 * rlv), list(rlv)
+            ], 200, ["$\Gamma$", "X", "$\Gamma$"]
     )
     bsar = bs.apply.array
     # try to read eigenvalues from file
@@ -516,7 +518,7 @@ def chain_hamiltonian(Huc, nc: int, **kwargs):
         isc = int(i - (nsc0 - 1) / 2)
         # index of isc in unit cell hamiltonain
         sc_idx = geom.sc_index([isc, 0, 0])
-        ham = huc[:, no * sc_idx : no * sc_idx + no]
+        ham = huc[:, no * sc_idx: no * sc_idx + no]
 
         if isc == 0:
             onem = np.eye(nc)
@@ -548,7 +550,7 @@ def chain_hamiltonian(Huc, nc: int, **kwargs):
 @timer
 def energy_levels(
     H,
-    Erange=[-3,3],
+    Erange=[-3, 3],
     figsize=(1, 5),
     index=False,
     color="darkslategrey",
@@ -598,7 +600,7 @@ def dos(
     emin = min(-30, E0)
     emax = max(30, E1)
     E = np.arange(emin, emax, dE)
-    num2str = lambda x: "m" + str(x)[1:] if x < 0 else str(x)
+    def num2str(x): return "m" + str(x)[1:] if x < 0 else str(x)
     erangestr = "{}to{}".format(num2str(emin), num2str(emax))
     # Firstly try to read dos from file
     # If the band structure undergoes big change, remember to remove the dos file
@@ -619,7 +621,8 @@ def dos(
                 dos = np.loadtxt(f)
             assert len(dos) != 0
         except:
-            print(f"dos file {dosfile} not found or empty. Now calculate new dos")
+            print(
+                f"dos file {dosfile} not found or empty. Now calculate new dos")
             dos = mpav.DOS(E, distribution=dis)
             # write to file
             with open(dosfile, "w") as f:
@@ -677,7 +680,7 @@ def pdos(
     emin = min(-30, E0)
     emax = max(30, E1)
     E = np.arange(emin, emax, dE)
-    num2str = lambda x: "m" + str(x)[1:] if x < 0 else str(x)
+    def num2str(x): return "m" + str(x)[1:] if x < 0 else str(x)
     erangestr = "{}to{}".format(num2str(emin), num2str(emax))
     mp1, mp2, mp3 = mpgrid
     pdosfile = os.path.join(
@@ -768,9 +771,9 @@ def pdos(
             proj_orbs = projected_orbitals
         proj_ats_orbs = dict(zip(proj_atoms, [proj_orbs] * len(proj_atoms)))
     else:
-        proj_ats_orbs = convert_formated_str_to_dict(specify_atoms_and_orbitals)
+        proj_ats_orbs = convert_formated_str_to_dict(
+            specify_atoms_and_orbitals)
     print(proj_ats_orbs)
-
 
     plt.figure(figsize=figsize)
     plt.ylabel("$E - E_F$ (eV)")
@@ -922,12 +925,15 @@ def fat_bands(
             proj_orbs = projected_orbitals
         proj_ats_orbs = dict(zip(proj_atoms, [proj_orbs] * len(proj_atoms)))
     else:
-        proj_ats_orbs = convert_formated_str_to_dict(specify_atoms_and_orbitals)
+        proj_ats_orbs = convert_formated_str_to_dict(
+            specify_atoms_and_orbitals)
     print(proj_ats_orbs)
 
     # Try to read fatbands from file
-    fbwtfile = os.path.join(path, f"{name}.fatbands.weight.{tick_labels}{knpts}.npz")
-    fbeigfile = os.path.join(path, f"{name}.fatbands.eig.{tick_labels}{knpts}.txt")
+    fbwtfile = os.path.join(
+        path, f"{name}.fatbands.weight.{tick_labels}{knpts}.npz")
+    fbeigfile = os.path.join(
+        path, f"{name}.fatbands.eig.{tick_labels}{knpts}.txt")
     wt_dict = {}
     try:
         wt_dict_comp = np.load(fbwtfile)
@@ -991,7 +997,8 @@ def fat_bands(
             "darkseagreen",
             "aquamarine",
         ],  # pz
-        ["red", "lightcoral", "darkred", "darksalmon", "mistyrose", "rosybrown"],  # d
+        ["red", "lightcoral", "darkred", "darksalmon",
+            "mistyrose", "rosybrown"],  # d
         ["purple", "thistle", "darkmagenta", "magenta", "violet", "indigo"],  # f
     ]
     Emin, Emax = Erange
@@ -1092,7 +1099,8 @@ def fat_bands(
                             alpha=alp,
                         )
                         # update the "already filled range"
-                        filled_range = filled_range + np.array([-weight, weight])
+                        filled_range = filled_range + \
+                            np.array([-weight, weight])
                     io += 1
                 ifig += 1
                 ia += 1
@@ -1130,7 +1138,8 @@ def plot_eigst_band(
     for i in offset:
         bands.append(num_occ - 1 + i)
     print("Bands that are taken into account: ", bands)
-    print("Energy: ", [H.eigh(k=_k)[i] for i in bands])
+    print("Energy relative to Fermi level: ", [
+          H.eigh(k=_k)[i]-fermi_energy for i in bands])
     plt.figure(figsize=figsize)
     if not phase:
         esnorm = es.sub(bands).norm2(sum=False).sum(0)
@@ -1236,7 +1245,8 @@ def ldos(
         for i in range(n):
             ax = axes[i]
             for j in range(m):
-                ax.hlines(eig_sub[j], 0, 1, alpha=ldos[j, i], color="coral", **kwargs)
+                ax.hlines(eig_sub[j], 0, 1, alpha=ldos[j, i],
+                          color="coral", **kwargs)
             ax.set_xticks([])
             ax.set_ylim(Emin, Emax)
             ax.set_title(location[i])
@@ -1301,7 +1311,8 @@ def ldos_map(
 def zak_phase(H):
 
     bs = BandStructure(
-        H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, ["$\Gamma$", "$X$", "$\Gamma$"]
+        H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, [
+            "$\Gamma$", "$X$", "$\Gamma$"]
     )
 
     occ = [i for i in range(len(H.eig()) // 2)]
@@ -1319,7 +1330,8 @@ def zak(contour, sub=None, gauge="R"):
     from numpy import dot, angle
 
     if not isinstance(contour.parent, Hamiltonian):
-        raise TypeError("Requires the Brillouine zone object to contain a Hamiltonian")
+        raise TypeError(
+            "Requires the Brillouine zone object to contain a Hamiltonian")
 
     if not contour.parent.orthogonal:
         raise TypeError("Requires the Hamiltonian to use orthogonal basis")
@@ -1361,7 +1373,8 @@ def zak(contour, sub=None, gauge="R"):
 def inter_zak(H, offset=0, fermi_energy=0.0):
 
     bs = BandStructure(
-        H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 200, ["$\Gamma$", "$X$", "$\Gamma$"]
+        H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 200, [
+            "$\Gamma$", "$X$", "$\Gamma$"]
     )
 
     bsar = bs.apply.array
@@ -1405,7 +1418,8 @@ def ssh(H, occ):
     Please provide the offset from homo as occ
     """
     bs = BandStructure(
-        H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, ["$\Gamma$", "$X$", "$\Gamma$"]
+        H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, [
+            "$\Gamma$", "$X$", "$\Gamma$"]
     )
 
     occn = len(H) // 2
@@ -1420,11 +1434,13 @@ def ssh(H, occ):
 
     return round(gamma_inter, 10)
 
+
 @timer
 def zak_band(H, occ):
 
     bs = BandStructure(
-        H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, ["$\Gamma$", "$X$", "$\Gamma$"]
+        H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, [
+            "$\Gamma$", "$X$", "$\Gamma$"]
     )
 
     gamma_inter = zak(bs, sub=occ, gauge="R")
@@ -1444,7 +1460,8 @@ def zak_dft(contour, sub=None, gauge="R"):
     from numpy import dot, angle, multiply, conj
 
     if not isinstance(contour.parent, Hamiltonian):
-        raise TypeError("Requires the Brillouine zone object to contain a Hamiltonian")
+        raise TypeError(
+            "Requires the Brillouine zone object to contain a Hamiltonian")
 
     if sub is None:
         raise ValueError("Calculate only the occupied bands!")
@@ -1501,7 +1518,8 @@ def zak_dft(contour, sub=None, gauge="R"):
 def zak_band_dft(H, occ):
 
     bs = BandStructure(
-        H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, ["$\Gamma$", "$X$", "$\Gamma$"]
+        H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 400, [
+            "$\Gamma$", "$X$", "$\Gamma$"]
     )
 
     d_det, gamma_inter = zak_dft(bs, sub=occ, gauge="R")
@@ -1525,7 +1543,7 @@ def get_zak_dict(H, method="from_top"):
 
     for i in range(len(occ)):
         if method == "from_top":
-            sub = occ[-i - 1 :]
+            sub = occ[-i - 1:]
         elif method == "from_bottom":
             sub = occ[: i + 1]
         d, z = zak_band_dft(H, sub)
@@ -1570,14 +1588,14 @@ def Z2(H, num_bands=None):
 
     if not num_bands:
         e0 = H.eigh()
-        occ = e0[e0<0].size
-    k = [[0,0,0], [0.5,0,0]]
+        occ = e0[e0 < 0].size
+    k = [[0, 0, 0], [0.5, 0, 0]]
     res = 1
     for _k in k:
         bands = [i for i in range(occ)]
         states = H.eigenstate(k=_k, gauge='R').sub(bands).state
-        states_rev = states[:,idx_rev]
-        # np.inner(a, a) = a times a.T 
+        states_rev = states[:, idx_rev]
+        # np.inner(a, a) = a times a.T
         par_mat = np.inner(np.conj(states), states_rev)
         det = np.linalg.det(par_mat)
         res *= det
@@ -1587,7 +1605,6 @@ def Z2(H, num_bands=None):
     elif res == 1:
         _Z2 = 0
     return _Z2
-
 
 
 @timer
@@ -1617,7 +1634,8 @@ def plot_wannier_centers(
                 wc_raw.append(line)
         # convert it to an array
         wc = np.array(
-            list(map(lambda x: list(map(float, x.strip().split()[1:])), wc_raw))
+            list(
+                map(lambda x: list(map(float, x.strip().split()[1:])), wc_raw))
         )
         # Translate wannier centres to home cell
         wc_hc = wc - np.floor((wc - (gcenter - abc / 2)) / abc).dot(cell)
@@ -1625,20 +1643,19 @@ def plot_wannier_centers(
         wcc = wc_hc.sum(0)
         temp = wcc.dot(np.linalg.inv(cell))
         wcc = temp - np.floor(temp)
-        wcc_abs = np.around(wcc.dot(cell),4)
+        wcc_abs = np.around(wcc.dot(cell), 4)
         wcc_rel_frac = wcc - ccenter.dot(np.linalg.inv(cell))
         wcc_rel = wcc_rel_frac*cell
         wcc_rel_frac = np.around(wcc_rel_frac, 4)
         print("Sum of Wannier centres (Absolute):\n\t", wcc_abs)
         # print("Sum of Wannier centres (Relative):\n\t", wcc_rel)
         print("Sum of Wannier centres (Relative Fractional):\n\t", wcc_rel_frac)
-        
+
     plt.figure(figsize=figsize)
     plot(geom, supercell=sc)
-    plt.scatter(wc_hc[:, 0], wc_hc[:, 1], s=marker_size, c=marker_color, marker=marker)
+    plt.scatter(wc_hc[:, 0], wc_hc[:, 1], s=marker_size,
+                c=marker_color, marker=marker)
     plt.axis("equal")
-
-
 
 
 def chiral_phase_index(H, knpts=200, plot_phase=False):
@@ -1652,31 +1669,31 @@ def chiral_phase_index(H, knpts=200, plot_phase=False):
     Aidx, Bidx = find_sublattice(g)
     N = len(Aidx)
 
-    def off_diagonalize(M:np.ndarray):
+    def off_diagonalize(M: np.ndarray):
         # Bring a matrix to off-diagonalized form
-        Mnew = np.zeros((2*N,2*N), dtype=np.complex128)
+        Mnew = np.zeros((2*N, 2*N), dtype=np.complex128)
         for i in range(N):
             for j in range(N):
-                Mnew[i,j] = M[Aidx[i],Aidx[j]]
-                Mnew[i,N+j] = M[Aidx[i],Bidx[j]]
-                Mnew[N+i,j] = M[Bidx[i],Aidx[j]]
-                Mnew[N+i,N+j] = M[Bidx[i],Bidx[j]]
+                Mnew[i, j] = M[Aidx[i], Aidx[j]]
+                Mnew[i, N+j] = M[Aidx[i], Bidx[j]]
+                Mnew[N+i, j] = M[Bidx[i], Aidx[j]]
+                Mnew[N+i, N+j] = M[Bidx[i], Bidx[j]]
         return Mnew
 
-    k = np.linspace(0,1,knpts)
+    k = np.linspace(0, 1, knpts)
     kiter = (i for i in k)
     k_prev = next(kiter)
     k_first = k_prev
     # modified eigenvalue matrix
-    eig_mod = np.kron(np.array([[-1,0],[0,1]]), np.eye(N))
-    states_prev = H.eigenstate(k=[k_prev,0,0]).state
+    eig_mod = np.kron(np.array([[-1, 0], [0, 1]]), np.eye(N))
+    states_prev = H.eigenstate(k=[k_prev, 0, 0]).state
     Qk_prev = states_prev.T.dot(eig_mod).dot(states_prev.conj())
-    Uk_prev = off_diagonalize(Qk_prev)[:N,N:]
+    Uk_prev = off_diagonalize(Qk_prev)[:N, N:]
     for i in range(knpts-1):
         k_second = next(kiter)
-        states_second = H.eigenstate(k=[k_second,0,0]).state
+        states_second = H.eigenstate(k=[k_second, 0, 0]).state
         Qk_second = states_second.T.dot(eig_mod).dot(states_second.conj())
-        Uk_second = off_diagonalize(Qk_second)[:N,N:]
+        Uk_second = off_diagonalize(Qk_second)[:N, N:]
         detUk = det(Uk_prev.conj().T.dot(Uk_second))
         ph = angle(detUk)
         phases.append(ph)
@@ -1692,25 +1709,24 @@ def chiral_phase_index(H, knpts=200, plot_phase=False):
         k_prev = k_second
         Uk_prev = Uk_second
     k_second = k_first
-    states_second = H.eigenstate(k=[k_second,0,0]).state
+    states_second = H.eigenstate(k=[k_second, 0, 0]).state
     Qk_second = states_second.T.dot(eig_mod).dot(states_second.conj())
-    Uk_second = off_diagonalize(Qk_second)[:N,N:]
+    Uk_second = off_diagonalize(Qk_second)[:N, N:]
     detUk = det(Uk_prev.conj().T.dot(Uk_second))
     ph = angle(detUk)
     phases.append(ph)
     phases = np.array(phases)
-    
+
     sumPhases = phases.sum()
-    Z = np.around(sumPhases/2/np.pi,5)
-    
+    Z = np.around(sumPhases/2/np.pi, 5)
+
     if plot_phase:
         cumPhases = phases.cumsum()
         rads = np.linspace(1, abs(Z)*1.2, cumPhases.shape[0])
-        plt.plot(np.multiply(rads, np.cos(cumPhases)), 
+        plt.plot(np.multiply(rads, np.cos(cumPhases)),
                  np.multiply(rads, np.sin(cumPhases)))
         # plt.scatter(np.linspace(0,1,knpts),phases, 50, marker='*')
         # plt.xticks([0,0.25,0.5,0.75,1])
         plt.axis('equal')
 
     return Z
-
