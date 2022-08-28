@@ -1409,7 +1409,7 @@ def inter_zak(H, offset=0, fermi_energy=0.0):
     print("Bands taken into account: {} to {}".format(occ[0] + 1, occ[-1] + 1))
     gamma_inter = zak(bs, sub=occ, gauge="R")
 
-    return round(gamma_inter, 10)
+    return round(gamma_inter, 5)
 
 
 @timer
@@ -1611,7 +1611,7 @@ def Z2(H, num_bands=None):
 def plot_wannier_centers(
     geom,
     name,
-    path=None,
+    path:str=None,
     figsize=(6, 4),
     sc=False,
     marker="*",
@@ -1658,7 +1658,19 @@ def plot_wannier_centers(
     plt.axis("equal")
 
 
-def chiral_phase_index(H, knpts=200, plot_phase=False):
+def chiral_phase_index(H, knpts=200, plot_phase=False,
+    Aidx=None, Bidx=None):
+    """
+    Calculate the chiral phase index defined in
+        'Jingwei Jiang and Steven Louie, Nano Lett. 2021, 21, 1, 197–202'
+    Args:
+        knpts: number of k points in BZ
+        plot_phase: plot the evolution of phase
+        Aidx, Bidx: provide indices of A and B sublattices because the 
+            find_sublattice method sometimes doesn't work if the lattice is
+            not regular
+    """
+
 
     from numpy.linalg import det
     from numpy import angle
@@ -1666,7 +1678,8 @@ def chiral_phase_index(H, knpts=200, plot_phase=False):
     phases = []
     # phases2 = []
     g = H.geometry
-    Aidx, Bidx = find_sublattice(g)
+    if not (Aidx and Bidx):
+        Aidx, Bidx = find_sublattice(g)
     N = len(Aidx)
 
     def off_diagonalize(M: np.ndarray):
