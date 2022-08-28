@@ -148,7 +148,7 @@ ElectronicTemperature   {electronic_temperature} K
 ############################################
 #   Molecular Dynamics
 ############################################
-MD.TypeOfRun            CG  # coordinate optimization by conjugation gradient
+MD.TypeOfRun            CG 
 MD.Steps                1000
 MD.MaxDispl             {max_disp_len}  Ang
 MD.MaxForceTol          {max_force_tol} eV/Ang
@@ -328,13 +328,10 @@ Siesta2Wannier90.UnkGrid3       {:d}""".format(*s2w_grid))
 Siesta2Wannier90.NumberOfBands  {num_bands_to_wannier}""")
             else:
                 # NumberOfBandsUp/Down are by default the same as NumberOfBands
-                try:
-                    f.write(f"""
-Siesta2Wannier90.NumberOfBandsUp  {int(num_bands_to_wannier_up)}
-Siesta2Wannier90.NumberOfBandsDown  {int(num_bands_to_wannier_down)}
+                f.write(f"""
+Siesta2Wannier90.NumberOfBandsUp  {num_bands_to_wannier_up}
+Siesta2Wannier90.NumberOfBandsDown  {num_bands_to_wannier_down}
 """)
-                except:
-                    pass
 
 
 def write_struct_fdf(
@@ -889,7 +886,7 @@ MD.FCdispl      < FC.fdf   # Displacement to use for the computation of the
 
 
 def write_sbatch_file(name, path, program='siesta', cluster='htc',
-    time=10, num_nodes=1, num_tasks_per_node=48, partition='short',
+    time=10, num_nodes=1, num_tasks_per_node=48,
     job_name=None, memory=None):
     """
     Prepare the bash file for sbatch
@@ -918,6 +915,12 @@ def write_sbatch_file(name, path, program='siesta', cluster='htc',
         load_module = 'module load ORCA/5.0.3-gompi-2021b'
         run_cmd = '$EBROOTORCA/orca $name.inp > $name.out'
     
+    if time <= 12:
+        partition = 'short'
+    elif time <= 48:
+        partition = 'medium'
+    else:
+        partition = 'long'
     with open(os.path.join(path, f'run_{program}.sh'),'w') as sh:
         sh.write(f"""#!/bin/bash
 
