@@ -306,7 +306,11 @@ def attach_pz(g, basis="DZP"):
     """
     Attach the Pz orbitals to the geometry
     """
-
+    if isinstance(g, Geometry):
+        pass
+    elif isinstance(g, Hamiltonian):
+        g = g.geometry
+        
     r = np.linspace(0, 5, 100)
     epsilon = 1.625
     f = np.exp(-epsilon * r)
