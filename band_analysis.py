@@ -1290,10 +1290,11 @@ def ldos_map(
     eig = H.eigh(k=k)
     sub = np.where(np.logical_and(eig > Emin, eig < Emax))[0]
 
+    zmean = H.geometry.xyz[:,2].mean()
     dos = 0
     for b in sub:
         grid = Grid(mesh, sc=H.sc)
-        index = grid.index([0, 0, height])
+        index = grid.index([0, 0, zmean+height])
         es_sub = es.sub(b)
         es_sub.wavefunction(grid)  # add the wavefunction to grid
         dos += grid.grid[:, :, index[2]].T ** 2
@@ -1305,7 +1306,6 @@ def ldos_map(
     if colorbar:
         plt.colorbar()
     return dos
-
 
 @timer
 def zak_phase(H):
