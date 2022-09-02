@@ -715,7 +715,7 @@ def write_fcbuild_file(
         mpgrid=[31, 1, 1],
         supercell=[1, 0, 0],
         mesh_cutoff=400,
-        bandlines_kpath='GX',
+        bandlines_kpath='XGX',
         bandlines_nkpts=200,
 ):
     """
@@ -887,7 +887,7 @@ MD.FCdispl      < FC.fdf   # Displacement to use for the computation of the
 
 def write_sbatch_file(name, path, program='siesta', cluster='htc',
     time=10, num_nodes=1, num_tasks_per_node=48,
-    job_name=None, memory=None):
+    job_name=None, memory=None, phonon=False):
     """
     Prepare the bash file for sbatch
 
@@ -897,10 +897,9 @@ def write_sbatch_file(name, path, program='siesta', cluster='htc',
         time: in hours
         num_nodes: number of nodes
         num_tasks_per_node: number of tasks per node
-        partition: 'short' (time <= 12), medium (12 < time <= 24), or long
-            (time >= 24)
         job_name: job name
         memory: by default 8000M per task
+        phonon: Run siesta phonon calculation or not
     """
 
     if not memory:
@@ -911,6 +910,8 @@ def write_sbatch_file(name, path, program='siesta', cluster='htc',
     if program == 'siesta':
         load_module = 'module load Siesta/4.1.5-foss-2020a'
         run_cmd = 'mpirun siesta < $name\_RUN.fdf > $name.out'
+        if phonon:
+            run_cmd = 'mpirun siesta < $name\.ifc.fdf > $name.ifc.out'
     elif program == 'orca':
         load_module = 'module load ORCA/5.0.3-gompi-2021b'
         run_cmd = '$EBROOTORCA/orca $name.inp > $name.out'
@@ -978,3 +979,43 @@ def copy_psf_files(path, elements, functional):
         psf_src = os.path.join(path_from, f'{e}.psf')
         psf_dst = os.path.join(path, f'{e}.psf')
         copyfile(psf_src, psf_dst)
+
+
+
+
+
+
+def write_orca_input_file(name, path, spin_multiplicity:int, charge=0,
+    functional='B3LYP', basis_set='6-31G**', optimize_control='TightOPT',
+    SCF_control='TightSCF', num_processor=48, plot_spin_density=True):
+    """
+    Write Orca input file
+    You should provide the name.xyz file
+    """
+    inp_file = f'{name}.inp'
+    multiplets_name = {1:'singlet', 2:'doublet', 3:'triplet', 4:'quartet',
+        5:'quintet', 6:'sextet', 7:'septet', 8:'octet'}
+    
+    with open(os.path.join(path,inp_file),'w') as f:
+        f.write(f"# {KFM} created at {get_datetime()}\n")
+        f.write(f"""
+!UKS {functional} {basis_set} {optimize_control} {SCF_control} RIJCOSX
+!UNO
+
+%base "{name}"
+
+%pal 
+nprocs {num_processor}
+end
+
+*xyzfile {charge} {spin_multiplicity} {name}.xyz
+""")
+        if plot_spin_density:
+            f.write(f"""
+%plots
+dim1 120
+dim2 120
+dim3 120
+Format Gaussian_cube
+SpinDens("{name}_{multiplets_name[spin_multiplicity]}.cube");
+end""")
