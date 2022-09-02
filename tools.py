@@ -151,7 +151,7 @@ def list_str(l):
     return lnew
 
 
-def read_forces(name,path):
+def read_forces(name, path, which=None):
     """
     Read max force from .FA file
     ouput max force, total force, and residual force in eV/Ang"""
@@ -161,6 +161,26 @@ def read_forces(name,path):
     maxForce = np.max(np.abs(forces))
     totForce = np.linalg.norm(np.sum(forces, axis=0))
     resForce = np.sqrt(np.sum(np.square(forces))/forces.size) # residual
+    forceDict = {'max': maxForce,
+                 'total': totForce,
+                 'residue': resForce}
+    if not which:
+        print('Max force: {:6f} eV/Ang'.format(maxForce))
+        print('Total force: {:6f} eV/Ang'.format(totForce))
+        print('Residue force: {:6f} eV/Ang'.format(resForce))
+    else:
+        which = which.split(",")
+        retlist = []
+        for s in which:
+            try:
+                retlist.append(forceDict[s.strip().lower()])
+            except:
+                print("Wrong keyword. Must be one of ['max', 'total', 'residue']")
+        if len(retlist) == 1:
+            retlist = retlist[0]
+        return retlist
+
+        
 
     return maxForce, totForce, resForce
 
@@ -214,22 +234,24 @@ def read_final_energy(name, path="./opt", which=None):
     ergDict = dict()
     for s in rawList:
         [key, value] = s[7:].split('=')
-        key = key.strip()
+        key = key.strip().lower()
         value = float(value)
         ergDict[key] = value
     if which:
         which = which.split(",")
         retlist = []
         for s in which:
-            for key in ergDict.keys():
-                if key.lower() == s.strip().lower():
-                    retlist.append(ergDict[key])
+            try:
+                retlist.append(ergDict[s.strip().lower()])
+            except:
+                print("Wrong keyword. Must be one of {}".format([
+                    i for i in ergDict.keys()]))
         if len(retlist) == 1:
             retlist = retlist[0]
         return retlist
     else:
-        print("Total energy: {} eV".format(ergDict["Total"]))
-        print("Fermi energy: {} eV".format(ergDict["Fermi"]))
+        print("Total energy: {} eV".format(ergDict["total"]))
+        print("Fermi energy: {} eV".format(ergDict["fermi"]))
 
 
 from itertools import combinations, permutations
