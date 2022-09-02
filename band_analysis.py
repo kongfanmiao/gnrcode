@@ -212,7 +212,7 @@ def band_structure(
             # mark the band index
             if index:
                 if Erange[0] < ek[-1] < Erange[1]:
-                    plt.annotate(j + 1, (lk[-1], ek[0]))
+                    plt.annotate(j + 1, (lk[-1], ek[0]), color=color[i])
     if spin_polarized:
         plt.legend(bbox_to_anchor=legend_position)
 
@@ -250,9 +250,12 @@ def plot_bands(name, path,
                ticks_font=12,
                label_font=12,
                ticklabels=None,
+               index=False
                ):
-    bandsile = get_sile(os.path.join(path, f'{name}.bands'))
-    bands = bandsile.read_data(as_dataarray=True)
+    """
+    Plot the band structure from .bands file
+    """
+    bands = read_bands(name, path, squeeze=False)
     if ticklabels:
         bands.ticklabels[:] = ticklabels
 
@@ -275,19 +278,27 @@ def plot_bands(name, path,
     plt.tick_params(axis='x', labelsize=ticks_font)
     plt.tick_params(axis='y', labelsize=ticks_font)
     # plot the data
-    for i in range(bands.shape[2]):
+    for i in range(bands.shape[2]): # iterate bands
         band = bands[:, :, i]
         # spin unpolarized
-        if bands.shape[1] == 1:
+        if bands.shape[1] == 1: # spin index
             # select the bands that are in the given energy window
             if np.any(np.logical_and(band > emin, band < emax)):
                 plt.plot(ks, band[:, 0], color="k")
+            # mark the band index
+            if index & (Erange[0] < band[-1,0] < Erange[1]):
+                plt.annotate(i + 1, (band.ticks[-1], band[-1,0]))
         # spin polarized
         elif bands.shape[1] == 2:
             # select the bands that are in the given energy window
             if np.any(np.logical_and(band > emin, band < emax)):
                 plt.plot(ks, band[:, 0], color='r', linestyle='-')
                 plt.plot(ks, band[:, 1], color='b', linestyle='--')
+                # mark the band index
+                if index & (Erange[0] < band[-1,0] < Erange[1]):
+                    plt.annotate(i + 1, (band.ticks[-1], band[-1,0]), color='r')
+                if index & (Erange[0] < band[-1,1] < Erange[1]):
+                    plt.annotate(i + 1, (band.ticks[-1], band[-1,1]), color='b')
 
     if bands.shape[1] == 2:
         from matplotlib.lines import Line2D
