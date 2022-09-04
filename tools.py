@@ -179,20 +179,17 @@ def read_forces(name, path, which=None):
         if len(retlist) == 1:
             retlist = retlist[0]
         return retlist
-
-        
-
     return maxForce, totForce, resForce
 
 
-def read_calc_time(name, path, which='all'):
+def read_calc_time(name, path, which=None):
 
     # There is only .times file for parallel run. Try to read .times file first
     try:
         ftime = os.path.join(path, f'{name}.times')
         with open(ftime) as f:
             lines = f.read()
-        numNodes = int(re.search('Number of nodes\s*=\s*(\d+)', lines).group(1))
+        numCores = int(re.search('Number of nodes\s*=\s*(\d+)', lines).group(1))
         wallTime = float(re.search('Total elapsed wall-clock time.+=\s+(.+)', lines).group(1))
         CPUtime = float(re.search('Tot:  Sum, Avge,.+=\s+([\d\.]+)\s+', lines).group(1))
     except:
@@ -205,21 +202,24 @@ def read_calc_time(name, path, which='all'):
         tEnd = datetime.strptime(tEnd, '%d-%b-%Y %H:%M:%S')
         wallTime = (tEnd - tStart).total_seconds()
         CPUtime = wallTime
-        numNodes = 1
-    if which.lower()=='nodes':
-        return numNodes
+        numCores = 1
+    if not which:
+        wallTime = time.strftime('%d days %H hours %M minutes %S seconds', time.gmtime(wallTime))
+        CPUtime = time.strftime('%d days %H hours %M minutes %S seconds', time.gmtime(CPUtime))
+        print(f"Number of cores (processors): {numCores}")
+        print(f"Total elapsed wall-clock time: {wallTime}")
+        print(f"Total CPU time: {CPUtime}")
+    elif which.lower()=='cores':
+        return numCores
     elif which.lower()=='walltime':
         return wallTime
     elif which.lower()=='cputime':
         return CPUtime
     elif which.lower() == 'all':
-        return numNodes, wallTime, CPUtime
+        return numCores, wallTime, CPUtime
     else:
-        wallTime = time.strftime('%H:%M:%S', time.gmtime(wallTime))
-        CPUtime = time.strftime('%H:%M:%S', time.gmtime(CPUtime))
-        print(f"Number of nodes (processors): {numNodes}")
-        print(f"Total elapsed wall-clock time: {wallTime}")
-        print(f"Total CPU time: {CPUtime}")
+        raise ValueError("which must be None, or one of ['cores', 'walltime',\
+            'cputime', 'all']")
 
 
 
