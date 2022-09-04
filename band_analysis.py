@@ -123,7 +123,7 @@ def band_structure(
     index=False,
     figsize=(6, 4),
     tick_labels="XGX",
-    shift=0.0,
+    fermi_energy=0.0,
     knpts=200,
     tb=True,
     spin_polarized=False,
@@ -191,7 +191,7 @@ def band_structure(
                     f"eig file {eigfile[i]} not found or empty. Now calculate new eig")
                 eig = bsar[i].eigh()
                 # Usually the eigenvalues are shifted to Fermi energy by sisl already
-                eig += shift
+                eig -= fermi_energy
                 with open(eigfile[i], "w") as f:
                     np.savetxt(f, eig)
             eigh.append(eig)
@@ -312,13 +312,15 @@ def plot_bands(name, path,
 def interpolated_bs(
     name,
     path,
-    Hint=None,
-    Hpr=None,
+    H_int=None,
+    H_pr=None,
+    path_pr=None,
     Erange=[-5, 0],
     figsize=(6, 4),
     tick_labels="XGX",
     overlap=False,
-    npts=30,
+    knpts_int=30,
+    knpts_pr = 200,
     marker_size=30,
     marker_color="g",
     marker="o",
@@ -328,11 +330,11 @@ def interpolated_bs(
     """
     PLot the interpolated band structure from Wannier90 output file
     Arguments:
-        Hint: interpolated Hamiltonian
-        Hpr: pristine Hamiltonian
+        H_int: interpolated Hamiltonian
+        H_pr: pristine Hamiltonian
     """
-    if Hint:
-        ham_int = Hint
+    if H_int:
+        ham_int = H_int
     else:
         win_path = os.path.join(path, name + ".win")
         fwin = get_sile(win_path)
@@ -340,29 +342,38 @@ def interpolated_bs(
 
     tkls = list(tick_labels)
     tks = []
-    # TO DO this is problematic for time reversal symmetry broken system
     for i, v in enumerate(tick_labels):
         tkls[i] = kpoints_dict[v][0]
         tks.append(kpoints_dict[v][1])
 
     if not overlap:
-        knpts_int = 400
+        knpts_int = knpts_pr
     else:
-        knpts_int = npts
-        knpts_pr = 400
-        if not Hpr:
+        if (not H_pr) or (not path_pr):
             raise ValueError(
-                "Please provide the pristine Hamiltonian overlap is True")
-        bs_pr = BandStructure(Hpr, tks, knpts_pr, tkls)
-        bsar_pr = bs_pr.apply.array
-        eigh_pr = bsar_pr.eigh()
+                "Please provide the pristine Hamiltonian H_pr and path_pr")
+        bs_pr = BandStructure(H_pr, tks, knpts_pr, tkls)
+
+        eigfile = os.path.join(path_pr, f"{name}.eig.{tick_labels}{knpts_pr}.txt")
+        # try to read eigenvalues from file, if not exist then create one
+        try:
+            with open(eigfile) as f:
+                eig_pr = np.loadtxt(f)
+            assert len(eig_pr) != 0
+        except:
+            print(
+                f"eig file {eigfile} not found or empty. Now calculate new eig")
+            bsar_pr = bs_pr.apply.array
+            eig_pr = bsar_pr.eigh()
+            with open(eigfile[i], "w") as f:
+                np.savetxt(f, eig_pr)
         lk_pr = bs_pr.lineark(ticks=False)
 
     bs_int = BandStructure(ham_int, tks, knpts_int, tkls)
     bsar_int = bs_int.apply.array
-    eigh_int = bsar_int.eigh()
+    eig_int = bsar_int.eigh()
     fe = read_final_energy(name=name, path=path, which="fermi")
-    eigh_int -= fe
+    eig_int -= fe
 
     lk_int, kt, kl = bs_int.lineark(ticks=True)
     plt.figure(figsize=figsize)
@@ -371,9 +382,9 @@ def interpolated_bs(
     plt.ylabel("$E-E_F$ (eV)")
 
     if overlap:
-        for i, ek_pr in enumerate(eigh_pr.T):
+        for i, ek_pr in enumerate(eig_pr.T):
             plt.plot(lk_pr, ek_pr, color="k", **kwargs)
-        for j, ek_int in enumerate(eigh_int.T):
+        for j, ek_int in enumerate(eig_int.T):
             plt.scatter(
                 lk_int,
                 ek_int,
@@ -384,7 +395,7 @@ def interpolated_bs(
             )
         plt.xlim(0, lk_pr[-1])
     else:
-        for i, ek_int in enumerate(eigh_int.T):
+        for i, ek_int in enumerate(eig_int.T):
             plt.plot(lk_int, ek_int, **kwargs)
         plt.xlim(0, lk_int[-1])
 
@@ -399,7 +410,7 @@ def unfold_band(
     marker_size: float = None,
     marker_size_range=[2, 10],
     cmap="Reds",
-    shift=0.0,
+    fermi_energy=0.0,
     ring=False,
     **kwargs,
 ):
@@ -452,7 +463,7 @@ def unfold_band(
             msize = weight * (smax - smin) + smin
         else:
             msize = marker_size
-        plt.scatter(kpts, eigh + shift, s=msize, c=weight, cmap=cmap, **kwargs)
+        plt.scatter(kpts, eigh - fermi_energy, s=msize, c=weight, cmap=cmap, **kwargs)
         plt.ylabel("$E-E_F (eV)$")
         plt.xlabel("wavenumber ($1 /\AA$)")
         if Erange:
