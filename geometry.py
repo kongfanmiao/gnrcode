@@ -74,7 +74,7 @@ def adjust_axes(
         plt.axis("equal")
 
 
-def set_cell(geom: Geometry, a, b=15, c=15):
+def set_cell(geom: Geometry, a, b=30, c=30):
     """
     set the length of the unit cell vector along the ribbon direction
     """
@@ -82,8 +82,14 @@ def set_cell(geom: Geometry, a, b=15, c=15):
         geom.cell[0, :] = a
     elif isinstance(a, (int, float)):
         geom.cell[0, :] = [a, 0, 0]
-    geom.cell[1, :] = [0, b, 0]
-    geom.cell[2, :] = [0, 0, c]
+    if isinstance(b, (list, tuple, np.ndarray)):
+        geom.cell[1, :] = b
+    elif isinstance(b, (int, float)):
+        geom.cell[1, :] = [0, b, 0]
+    if isinstance(c, (list, tuple, np.ndarray)):
+        geom.cell[2, :] = c
+    elif isinstance(c, (int, float)):
+        geom.cell[2, :] = [0, 0, c]
     geom.set_nsc([3, 1, 1])
 
 
