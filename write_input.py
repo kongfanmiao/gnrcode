@@ -27,17 +27,30 @@ def get_datetime():
 
 def write_siesta_runfile(
         geom: Geometry, name: str, path="./opt",
-        mpgrid=[21, 1, 1],
         xc_functional='GGA',
         xc_authors='PBE',
         basis_size='DZP',
-        write_bands=True,
-        bandlines_kpath='XGX',
-        bandlines_nkpts=200,
+        mesh_cutoff=400,
+        mpgrid=[21, 1, 1],
+        electronic_temperature=300,
+        variable_cell=True,
+        max_disp_len=0.05,
+        max_force_tol=0.01,
+        diag_algorithm="Divide-and-Conquer",
+        num_eigenstates=None,
+        mixer_method='Pulay',
+        mixer_weight=0.25,
+        mixer_history=6,
+        scf_H_tol=1e-3,
+        max_scf_iter=500,
+        cdf=True,
         spin_polarized=False,
         spin_afm=True,
         spin_orbit=False,
         soc_strength=1.0,
+        compute_bands=True,
+        bandlines_kpath='XGX',
+        bandlines_nkpts=200,
         denchar=False,
         wfs_write_for_kpts=False,
         wfs_write_for_bands=False,
@@ -51,35 +64,43 @@ def write_siesta_runfile(
         num_bands_to_wannier_up=None,
         num_bands_to_wannier_down=None,
         s2w_mesh=2,
-        diag_algorithm="Divide-and-Conquer",
-        num_eigenstates=None,
-        cdf=True,
-        mixer_weight=0.25,
-        mixer_history=6,
-        variable_cell=True,
-        mesh_cutoff=400,
-        max_disp_len=0.05,
-        max_force_tol=0.01,
-        scf_H_tol=1e-3,
-        electronic_temperature=300
 ):
     """
     Write Siesta input file
     Args:
-        mpgrid: MonkHorst Pack grid
-        bandlines_kpath: k path to calculation band structure
-        bandlines_nkpts: Number of k points for band line from 0 to 2*pi/a
+        xc_functional: Exchange correlation functional (default GGA)
+        xc_authors: functional flavor (default PBE)
+        basis_size: SZ, SZP, DZ, DZP (default), TZ, TZP, ...
+        mesh_cutoff: Plane wave cutoff, in unit of Ry
+        mpgrid: MonkHorst Pack grid (default 21x1x1)
+        electronic_temperature: electronic temperature (default 300K)
+        variable_cell: Fix the cell during MD relaxation or not
+        max_disp_len: Max atomic displacement in optimization move, in Ang
+        max_force_tol: Max Force tolerance in coordinate optimization, in unit of eV/Ang
+        diag_algorithm: By default it's Divide-and-Conquer. If job is to send to
+            ARC, then use "expert" instead
+        num_eigenstates: number of eigenstates to calculate. Could be efficient
+            to reduce computing time. Only effective for MRRR, ELPA and Expert.
+        mixer_method: SCF mixer method, Pulay (default), or Broyden, Linear
+        mixer_weight: SCF mixing weight
+        mixer_history: SCF mixer history
+        scf_H_tol: maximum absolute tolerance of Hamiltonian matrix elements
+        max_scf_iter: Max number of SCF iterations
+        cdf: Use NetCDF utility or not
         spin_polarized: Spin polarized or unpolarized calculation
         spin_afm: Antiferromagnetic configuration for spin initialization, if False,
             then it means ferromagnetic configuration
         spin_orbit: Includes spin-orbit coupling in calculation
         soc_strength: Spin-orbit coupling strength
+        compute_bands: compute band structure or not
+        bandlines_kpath: k path to calculation band structure
+        bandlines_nkpts: Number of k points for band line from 0 to 2*pi/a
         denchar: Use DENCHAR to calculate the density of charge. Required for 
             wavefunctions calculation
         wfs_write_for_kpts: Calculate and plot wavefunctions or not
+        wfs_write_for_bands: Write wavefunctions for given bands
         wfs_kpts: At which k points that the wavefunctions are calculated.
             Note that by default the k points is scaled by pi/a. MUST use float number!
-        wfs_write_for_bands: Write wavefunctions for given bands
         wfs_bands_range: Specify for which bands that the wavefunctions are calculated,
             and this calculates the wavefunctions at all k points for specified bands
         E_field: Apply electric field to the system, by default should be a list
@@ -93,16 +114,6 @@ def write_siesta_runfile(
         num_bands_to_wannier_down: Similar to num_bands_to_wannier_up, but for spin down
         s2w_mesh: Mesh grid size per Angstrom during Siesta2Wannier90 calculation. The default
             is 2, which means 2 mesh points for each Angstrom
-        diag_algorithm: By default it's Divide-and-Conquer. If job is to send to
-            ARC, then use "expert" instead
-        cdf: Use NetCDF utility or not
-        mixer_weight: SCF mixing weight
-        mixer_history: SCF mixer history
-        variable_cell: Fix the cell during MD relaxation or not
-        mesh_cutoff: Plane wave cutoff, in unit of Ry
-        max_disp_len: Max atomic displacement in optimization move, in Ang
-        max_force_tol: Max Force tolerance in coordinate optimization, in unit of eV/Ang
-        scf_H_tol: maximum absolute tolerance of Hamiltonian matrix elements
     """
     # Some other default parameters:
     #   PAO.BasisType       split
@@ -166,12 +177,13 @@ Diag.Algorithm          {diag_algorithm}
             # MRRR, ELPA, or Expert
             f.write("""NumberOfEigenStates     {}
 """.format(num_eigenstates))
-        f.write("""DM.UseSaveDM            T
+        f.write(f"""DM.UseSaveDM            T
 DM.History.Depth        6
-MaxSCFIterations        500
-SCF.Mixer.Weight        {}
-SCF.Mixer.History       {}
-SCF.H.Tolerance         {} eV
+MaxSCFIterations        {max_scf_iter}
+SCF.Mixer.Method        {mixer_method}
+SCF.Mixer.Weight        {mixer_weight}
+SCF.Mixer.History       {mixer_history}
+SCF.H.Tolerance         {scf_H_tol} eV
 
 ############################################
 #   Output Settings
@@ -185,8 +197,7 @@ WriteCoorXmol           T   # Write optimized structure coordinates in .xyz file
 WriteCoorStep           T   # Write coordinate in every MD step to .XV file
 WriteMDXmol             F   # Write .ANI file readable by XMoL for animation of MD
 WriteForces             T   # Write forces of each MD step to output file
-""".format(mixer_weight, mixer_history, scf_H_tol
-        ))
+""")
         if cdf:
             f.write("""
 TS.HS.Save              T
@@ -195,24 +206,6 @@ CDF.Compress            3
 WFS.Energy.Min          -20 eV
 WFS.Energy.Max          20 eV
 """)
-#------------------------------------------------------------------------------#
-        # calculate band structure
-        if write_bands:
-            f.write("""
-############################################
-#   Band Structures
-############################################
-# BandLinesScale  pi/a # default
-%block BandLines""")
-            for i, bdk in enumerate(bandlines_kpath):
-                tmp = kpoints_dict[bdk]
-                ktmp = 2*np.array(tmp[1]) # remember bandlines scale is pi/a
-                nkpt = 1 if i == 0 else int(bandlines_nkpts*np.linalg.norm(
-                    np.array(ktmp)/2-np.array(kpoints_dict[bandlines_kpath[i-1]][1])))
-                f.write("\n{}\t{:.5f}\t{:.5f}\t{:.5f}\t{}".format(
-                    nkpt, *ktmp, tmp[0]))
-            f.write("""
-%endblock BandLines""")
 #------------------------------------------------------------------------------#
         # write spin settings, by default spin unpolarized
         spin_mode = 'non-polarized'
@@ -235,6 +228,24 @@ DM.InitSpin.AF          {spin_afm}
         if spin_mode == 'spin-orbit':
             f.write(f"""Spin.OrbitStrength          {soc_strength}
 """)
+#------------------------------------------------------------------------------#
+        # calculate band structure
+        if compute_bands:
+            f.write("""
+############################################
+#   Band Structures
+############################################
+# BandLinesScale  pi/a # default
+%block BandLines""")
+            for i, bdk in enumerate(bandlines_kpath):
+                tmp = kpoints_dict[bdk]
+                ktmp = 2*np.array(tmp[1]) # remember bandlines scale is pi/a
+                nkpt = 1 if i == 0 else int(bandlines_nkpts*np.linalg.norm(
+                    np.array(ktmp)/2-np.array(kpoints_dict[bandlines_kpath[i-1]][1])))
+                f.write("\n{}\t{:.5f}\t{:.5f}\t{:.5f}\t{}".format(
+                    nkpt, *ktmp, tmp[0]))
+            f.write("""
+%endblock BandLines""")
 #------------------------------------------------------------------------------#
         # use DENCHAR program to plot wavefunction
         if denchar:
@@ -712,11 +723,9 @@ Wannier90_in_SIESTA_compute_unk .true.
 
 def write_fcbuild_file(
         geom: Geometry, name: str, path='./phonon',
-        mpgrid=[31, 1, 1],
         supercell=[1, 0, 0],
-        mesh_cutoff=400,
-        bandlines_kpath='XGX',
-        bandlines_nkpts=200,
+        bandlines_kpath='GX',
+        bandlines_nkpts=100,
 ):
     """
     Create fcbuild file for utility program fcbuild
@@ -741,29 +750,21 @@ def write_fcbuild_file(
 
     with open(os.path.join(path, fcbuild_file), 'w') as f:
         f.write(f"# {KFM} created at {get_datetime()}\n")
-        f.write("""
-SystemName           {}
-SystemLabel          {}
+        sc1, sc2, sc3 = supercell
+        f.write(f"""
+SystemName           {name}
+SystemLabel          {name}
 
-NumberOfSpecies      {}
-NumberOfAtoms        {}
+NumberOfSpecies      {geom.atoms.nspecie}
+NumberOfAtoms        {geom.na}
 
-PAO.BasisSizes       DZP
-Eigenvectors         T
-%block kgrid.MonkhorstPack
-    {}  0   0   0.0 
-    0   {}  0   0.0
-    0   0   {}  0.0
-%endblock kgrid.MonkhorstPack
-MeshCutoff           {} Ry
-
-SuperCell_1          {} 
-SuperCell_2          {}    
-SuperCell_3          {} 
+Eigenvectors         True
+SuperCell_1          {sc1} 
+SuperCell_2          {sc2}    
+SuperCell_3          {sc3} 
 
 BandLinesScale       pi/a
-%block BandLines""".format(
-            name, name, geom.atoms.nspecie, geom.na, *mpgrid, mesh_cutoff, *supercell))
+%block BandLines""")
         for i, bdk in enumerate(bandlines_kpath):
             tmp = kpoints_dict[bdk]
             ktmp = 2*np.array(tmp[1]) # becuase bandlines scale is pi/a
@@ -799,17 +800,30 @@ AtomicCoordinatesFormat NotScaledCartesianAng
 
 def write_ifc_file(
         geom: Geometry, name: str, path='./phonon',
-        mpgrid=[21, 1, 1],
-        mesh_cutoff=400,
-        scf_H_tol=1e-3,
-        mixer_weight=0.25,
-        mixer_history=6,
         xc_functional='GGA',
         xc_authors='PBE',
-        basis_size='DZP'
+        basis_size='DZP',
+        mpgrid=[21, 1, 1],
+        mesh_cutoff=400,
+        max_scf_iter=500,
+        mixer_method='Pulay',
+        mixer_weight=0.25,
+        mixer_history=6,
+        scf_H_tol=1e-3,
 ):
     """
     Create ifc file for Siesta phonon calculation
+    Args:
+        xc_functional: default GGA
+        xc_authors: functional flavor, default PBE
+        basis_size: default DZP
+        mpgrid: Monkhorst-Pack grid, default 21x1x1
+        mesh_cutoff: mesh cutoff
+        max_scf_iter: maximum number of SCF iterations
+        mixer_method: Pulay (default) or Broyden, Linear
+        mixer_weight: SCF mixing weight, default 0.25
+        mixer_history: SCF mixing history, default 6
+        scf_H_tol: SCF Hafmiltonian tolerance
     """
 
     ifc_file = name + '.ifc.fdf'
@@ -822,19 +836,22 @@ SystemLabel          {name}
 
 NumberOfSpecies      {geom.atoms.nspecie}
 NumberOfAtoms        < FC.fdf
+
 XC.functional        {xc_functional}
 XC.authors           {xc_authors}
 PAO.BasisSizes       {basis_size}
 MeshCutoff           {mesh_cutoff} Ry
-SCF.H.Tolerance      {scf_H_tol} eV
-SCF.Mixer.Weight     {mixer_weight}
-SCF.Mixer.History    {mixer_history}
-
 %block kgrid.MonkhorstPack
     {mp1}  0   0   0.0 
     0   {mp2}  0   0.0
     0   0   {mp3}  0.0
 %endblock kgrid.MonkhorstPack
+
+MaxSCFIterations     {max_scf_iter}
+SCF.Mixer.Method     {mixer_method}
+SCF.Mixer.Weight     {mixer_weight}
+SCF.Mixer.History    {mixer_history}
+SCF.H.Tolerance      {scf_H_tol} eV
 
 %block ChemicalSpeciesLabel""")
         for i, a in enumerate(geom.atoms.atom):
