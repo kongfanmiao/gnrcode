@@ -1,0 +1,9 @@
+#!/bin/bash
+
+echo "Overlaying"
+echo $1
+for input in "${@:2}"; do
+    echo $input
+    convert $input -flatten -transparent white $input
+done
+convert $1 ${@:2} -layers flatten -background none allWannierFunctions.png
