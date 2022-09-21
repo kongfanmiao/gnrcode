@@ -30,6 +30,7 @@ def write_siesta_runfile(
         xc_functional='GGA',
         xc_authors='PBE',
         basis_size='DZP',
+        pao_energy_shift=100,
         mesh_cutoff=400,
         mpgrid=[21, 1, 1],
         electronic_temperature=300,
@@ -71,6 +72,7 @@ def write_siesta_runfile(
         xc_functional: Exchange correlation functional (default GGA)
         xc_authors: functional flavor (default PBE)
         basis_size: SZ, SZP, DZ, DZP (default), TZ, TZP, ...
+        pao_energy_shift: PAO.EnergyShift, default 100 meV
         mesh_cutoff: Plane wave cutoff, in unit of Ry
         mpgrid: MonkHorst Pack grid (default 21x1x1)
         electronic_temperature: electronic temperature (default 300K)
@@ -117,7 +119,6 @@ def write_siesta_runfile(
     """
     # Some other default parameters:
     #   PAO.BasisType       split
-    #   PAO.EnergyShift     0.02 Ry
     #   SolutionMethod      diagon
     #   SaveRho             F
     #   WriteVoronoiPop     F
@@ -147,13 +148,13 @@ SystemLabel             {name}
 XC.functional           {xc_functional}
 XC.authors              {xc_authors}
 PAO.BasisSize           {basis_size}
+PAO.EnergyShift         {pao_energy_shift} meV
 MeshCutoff              {mesh_cutoff} Ry
 %block kgrid.MonkhorstPack
     {mp1}  0   0   0.0 
     0   {mp2}  0   0.0
     0   0   {mp3}  0.0
 %endblock kgrid.MonkhorstPack
-
 ElectronicTemperature   {electronic_temperature} K
 
 ############################################
@@ -188,16 +189,13 @@ SCF.H.Tolerance         {scf_H_tol} eV
 ############################################
 #   Output Settings
 ############################################
-COOP.write              F   # Crystal-Orbital Overlap, write 
-                            # SystemLabel.fullBZ.WFSX and SystemLabel.HSX file
+COOP.write              F   # Write .fullBZ.WFSX and .HSX file
 WriteMullikenPop        1   # Write atomic and orbital charges
-WriteEigenvalues        F   # Write eigenvalues for sampling k points
-SaveHS                  T   # Write Hamiltonian and overlap matrices, in .HSX file
+SaveHS                  T   # Write .HSX file
 WriteCoorXmol           T   # Write optimized structure coordinates in .xyz file
 WriteCoorStep           T   # Write coordinate in every MD step to .XV file
 WriteMDXmol             F   # Write .ANI file readable by XMoL for animation of MD
-WriteForces             T   # Write forces of each MD step to output file
-""")
+WriteForces             T   # Write forces of each MD step to output file""")
         if cdf:
             f.write("""
 TS.HS.Save              T
@@ -217,7 +215,8 @@ WFS.Energy.Max          20 eV
 ############################################
 #   Spin Settings
 ############################################
-Spin                    {spin_mode}""")
+Spin                    {spin_mode}
+""")
         # this can only change the initial spin state, if read from .DM,
         # this parameter is useless. So, delete .DM file before change this
         # parameter
@@ -235,7 +234,7 @@ DM.InitSpin.AF          {spin_afm}
 ############################################
 #   Band Structures
 ############################################
-# BandLinesScale  pi/a # default
+# BandLinesScale  pi/a 
 %block BandLines""")
             for i, bdk in enumerate(bandlines_kpath):
                 tmp = kpoints_dict[bdk]
@@ -803,6 +802,7 @@ def write_ifc_file(
         xc_functional='GGA',
         xc_authors='PBE',
         basis_size='DZP',
+        pao_energy_shift=100,
         mpgrid=[21, 1, 1],
         mesh_cutoff=400,
         max_scf_iter=500,
@@ -817,6 +817,7 @@ def write_ifc_file(
         xc_functional: default GGA
         xc_authors: functional flavor, default PBE
         basis_size: default DZP
+        pao_energy_shift: PAO.EnergyShift, default 100 meV
         mpgrid: Monkhorst-Pack grid, default 21x1x1
         mesh_cutoff: mesh cutoff
         max_scf_iter: maximum number of SCF iterations
@@ -840,6 +841,7 @@ NumberOfAtoms        < FC.fdf
 XC.functional        {xc_functional}
 XC.authors           {xc_authors}
 PAO.BasisSizes       {basis_size}
+PAO.EnergyShift      {pao_energy_shift} meV
 MeshCutoff           {mesh_cutoff} Ry
 %block kgrid.MonkhorstPack
     {mp1}  0   0   0.0 
@@ -968,7 +970,8 @@ def write_submit_all_file(path, dirs:list, program='siesta'):
         dirs: directories that contains run_{program} files
         program: 'siesta' or 'orca'
     """
-    dirs = ' '.join(dirs)
+    if not isinstance(dirs, str):
+        dirs = ' '.join(dirs)
     with open(os.path.join(path, 'submit_all.sh'), 'w') as sh:
         sh.write(f"""
 for name in {dirs}; do
