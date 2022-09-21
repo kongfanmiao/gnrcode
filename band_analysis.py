@@ -1134,7 +1134,7 @@ def fat_bands(
     plt.legend(handles=legend_elements, bbox_to_anchor=legend_position)
 
 
-@timer
+
 def plot_eigst_band(
     H,
     offset: list = [0],
@@ -1154,11 +1154,11 @@ def plot_eigst_band(
     eig = H.eigh(k=_k)
     num_occ = len(eig[eig < fermi_energy])
 
-    print("Index of the HOMO: ", num_occ)
+    print("Index of the HOMO: ", num_occ-1)
     bands = []
     offset.sort()
     for i in offset:
-        bands.append(num_occ - 1 + i)
+        bands.append(num_occ-1+i)
     print("Bands that are taken into account: ", bands)
     print("Energy relative to Fermi level: ", [
           H.eigh(k=_k)[i]-fermi_energy for i in bands])
