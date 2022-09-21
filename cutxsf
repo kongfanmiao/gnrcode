@@ -1,0 +1,18 @@
+#!/bin/bash
+
+for input in "${@:1}"; do
+	new="datagrid.${input%.*}.xsf"
+	echo "Processing $input"
+	cp $input $new
+	n0=$(awk '/CRYSTAL/{print NR}' $new)
+	n1=$(awk '/PRIMCOORD/{print NR}' $new)
+	n2=$(awk '/BEGIN_BLOCK_DATAGRID_3D/{print NR}' $new)
+	
+	let "n0=n0-1"
+	let "n1=n1+1"
+	let "n2=n2-4"
+	sed -i "$n1,$n2 d" $new
+	sed -i "$n1 i \ \ 1\ 1" $new
+	sed -i "1,$n0 d" $new
+done
+
