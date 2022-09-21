@@ -168,6 +168,8 @@ def read_forces(name, path, which=None):
         print('Max force: {:6f} eV/Ang'.format(maxForce))
         print('Total force: {:6f} eV/Ang'.format(totForce))
         print('Residue force: {:6f} eV/Ang'.format(resForce))
+    elif which.lower() == 'all':
+        return maxForce, totForce, resForce
     else:
         which = which.split(",")
         retlist = []
@@ -179,7 +181,6 @@ def read_forces(name, path, which=None):
         if len(retlist) == 1:
             retlist = retlist[0]
         return retlist
-    return maxForce, totForce, resForce
 
 
 def read_calc_time(name, path, which=None):
