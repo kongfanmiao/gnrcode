@@ -196,7 +196,10 @@ def plot_phonon_bands(
 
 
 def write_phonon_xsf(
-    geo, name, first_band: int, last_band: int, path="./phonon", num_of_cells=1,
+    geo, name, path, 
+    first_band: int, 
+    last_band: int, 
+    num_of_cells=1,
     q=[0, 0, 0]
 ):
     """
@@ -210,7 +213,7 @@ def write_phonon_xsf(
         num_of_cells: number of unit cells to write
     """
     kpts, enrgs, vectors = read_phonon_vectors(
-        geom=geo, name=name, path=path, first_band=first_band, last_band=last_band
+        name=name, path=path, first_band=first_band, last_band=last_band
     )
     newGeo = geo.tile(num_of_cells, 0)
     coord = newGeo.xyz
