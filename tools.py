@@ -205,8 +205,8 @@ def read_calc_time(name, path, which=None):
         CPUtime = wallTime
         numCores = 1
     if not which:
-        wallTime = time.strftime('%d days %H hours %M minutes %S seconds', time.gmtime(wallTime))
-        CPUtime = time.strftime('%d days %H hours %M minutes %S seconds', time.gmtime(CPUtime))
+        wallTime = str(datetime.timedelta(seconds=wallTime))
+        CPUtime = str(datetime.timedelta(seconds=CPUtime))
         print(f"Number of cores (processors): {numCores}")
         print(f"Total elapsed wall-clock time: {wallTime}")
         print(f"Total CPU time: {CPUtime}")
