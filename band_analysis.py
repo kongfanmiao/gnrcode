@@ -247,10 +247,15 @@ def read_bands(
 def plot_bands(name, path,
                Erange=[-3, 3],
                figsize=[6, 4],
-               ticks_font=12,
-               label_font=12,
+               index=False,
                ticklabels=None,
-               index=False
+               ticks_font=14,
+               label_font=14,
+               border_linewidth=1.5,
+               linewidth=1,
+               save=False,
+               save_path='./',
+               save_format='pdf'
                ):
     """
     Plot the band structure from .bands file
@@ -259,10 +264,10 @@ def plot_bands(name, path,
     if ticklabels:
         bands.ticklabels[:] = ticklabels
 
-    for i in range(len(bands.ticklabels)):
-        if bands.ticklabels[i] == 'Gamma':
-            bands.ticklabels[i] = '\Gamma'
-        bands.ticklabels[i] = '$'+bands.ticklabels[i]+'$'
+    # for i in range(len(bands.ticklabels)):
+    #     if bands.ticklabels[i] == 'Gamma':
+    #         bands.ticklabels[i] = '\Gamma'
+    #     bands.ticklabels[i] = '$'+bands.ticklabels[i]+'$'
 
     ks = bands.k.data
     plt.figure(figsize=figsize)
@@ -284,7 +289,8 @@ def plot_bands(name, path,
         if bands.shape[1] == 1: # spin index
             # select the bands that are in the given energy window
             if np.any(np.logical_and(band > emin, band < emax)):
-                plt.plot(ks, band[:, 0], color="k")
+                plt.plot(ks, band[:, 0], color="k", 
+                    linewidth=linewidth)
             # mark the band index
             if index & (Erange[0] < band[-1,0] < Erange[1]):
                 plt.annotate(i + 1, (band.ticks[-1], band[-1,0]))
@@ -292,13 +298,17 @@ def plot_bands(name, path,
         elif bands.shape[1] == 2:
             # select the bands that are in the given energy window
             if np.any(np.logical_and(band > emin, band < emax)):
-                plt.plot(ks, band[:, 0], color='r', linestyle='-')
-                plt.plot(ks, band[:, 1], color='b', linestyle='--')
+                plt.plot(ks, band[:, 0], color='r', linestyle='-', 
+                    linewidth=linewidth)
+                plt.plot(ks, band[:, 1], color='b', linestyle='--', 
+                    linewidth=linewidth)
                 # mark the band index
                 if index & (Erange[0] < band[-1,0] < Erange[1]):
                     plt.annotate(i + 1, (band.ticks[-1], band[-1,0]), color='r')
                 if index & (Erange[0] < band[-1,1] < Erange[1]):
                     plt.annotate(i + 1, (band.ticks[-1], band[-1,1]), color='b')
+    for border in ["left", "bottom", "top", "right"]:
+        plt.gca().spines[border].set_linewidth(border_linewidth)
 
     if bands.shape[1] == 2:
         from matplotlib.lines import Line2D
@@ -306,6 +316,14 @@ def plot_bands(name, path,
                         Line2D([0], [0], color='b', linestyle='--')]
         plt.legend(custom_lines, ['spin up', 'spin down'],
                    bbox_to_anchor=[1.1, 0.9])
+
+    if save:
+        tl = bands.ticklabels
+        tl = ''.join([s.strip('$\\')[0] for s in tl])
+        nkpts = bands.k.shape[0]
+        save_name = f'{name}.BandStructure.{tl}{nkpts}.{emin}to{emax}eV.{save_format}'
+        plt.savefig(os.path.join(save_path, save_name), bbox_inches='tight')
+
 
 
 @timer
@@ -456,7 +474,6 @@ def unfold_band(
         weight = (1 / N) * np.conj(eigenstate).dot(phase).dot(eigenstate.T)
         weight = np.abs(weight).diagonal()
         weight = weight / weight.max()
-        weight = weight
         kpts = np.repeat(k, N)
         if not marker_size:
             smin, smax = marker_size_range
@@ -465,7 +482,7 @@ def unfold_band(
             msize = marker_size
         plt.scatter(kpts, eigh - fermi_energy, s=msize, c=weight, cmap=cmap, **kwargs)
         plt.ylabel("$E-E_F (eV)$")
-        plt.xlabel("wavenumber ($1 /\AA$)")
+        plt.xlabel("Wavenumber ($1 /\AA$)")
         if Erange:
             plt.ylim(Erange[0], Erange[1])
         plt.xlim(-bdlscale, bdlscale)
@@ -565,6 +582,7 @@ def chain_hamiltonian(Huc, nc: int, **kwargs):
     chain = geom.tile(nc, 0)
     chain.cell[0, 0] += 10
     chain = move_to_xycenter(chain, plot_geom=False)
+    chain.set_nsc([1,1,1])
     H = Hamiltonian.fromsp(chain, spm)
     return H
 
@@ -608,7 +626,6 @@ def dos(
     color="k",
     mpgrid=[30, 1, 1],
     gaussian_broadening=0.05,
-    tb=True,
     **kwargs,
 ):
 
@@ -1148,11 +1165,15 @@ def plot_eigst_band(
     Plot the eigenstate of a band, by default the topmost valence band
     - offset: offset from the fermi level, or, the topmost valence band
     """
-    _k = k if k else [0, 0, 0]
+    if k is None:
+        _k = [0, 0, 0]
+    else:
+        _k = k
 
     es = H.eigenstate(k=_k)
     eig = H.eigh(k=_k)
-    num_occ = len(eig[eig < fermi_energy])
+    # num_occ = len(eig[eig < fermi_energy])
+    num_occ = len(H)//2
 
     print("Index of the HOMO: ", num_occ-1)
     bands = []
@@ -1177,6 +1198,7 @@ def plot_eigst_band(
             H.xyz[:, 0], H.xyz[:, 1], dotsize * np.abs(esstate), c=esstate, cmap="bwr"
         )
     plt.axis("equal")
+
 
 
 @timer
@@ -1692,8 +1714,6 @@ def chiral_phase_index(H, knpts=200, plot_phase=False,
             find_sublattice method sometimes doesn't work if the lattice is
             not regular
     """
-
-
     from numpy.linalg import det
     from numpy import angle
 
