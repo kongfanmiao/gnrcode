@@ -160,14 +160,15 @@ def create_geometry(
     return geom
 
 
-def move_to_origo(gnr):
+def move_to_origo(gnr, plot_geom=True, sc=True, aid=False):
     """
     Move the geometry center to origin
     """
 
-    gnr = gnr.translate([-gnr.center()[0], -gnr.center()[1], 0])
-    display2D(gnr, sc=False, aid=False)
-    plt.axis("equal")
+    gnr = gnr.translate(-gnr.center())
+    
+    if plot_geom:
+        display2D(gnr, sc=sc, aid=aid)
 
     return gnr
 
@@ -190,7 +191,6 @@ def move_to_center(g, axis="xyz", plot_geom=True,
 
     if plot_geom:
         display2D(g, sc=sc, aid=aid)
-        plt.axis("equal")
 
     return g
 
@@ -368,12 +368,12 @@ def find_sublattice(g:Geometry, bond_length=1.42):
             Asublat.append(int(a))
     return Asublat, Bsublat
 
-    
+
 def mark_sublattice(g, figsize=[8,6]):
     A, B = find_sublattice(g)
     plt.figure(figsize=figsize)
     plt.axis('equal')
-    xyz = a79s.xyz
+    xyz = g.xyz
     Axyz = xyz[A,:]
     Bxyz = xyz[B,:]
     plt.scatter(Axyz[:,0], Axyz[:,1], 20, color='r')
