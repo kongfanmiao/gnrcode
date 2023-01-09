@@ -35,6 +35,7 @@ def write_siesta_runfile(
         mpgrid=[21, 1, 1],
         electronic_temperature=300,
         variable_cell=True,
+        md_steps=1000,
         max_disp_len=0.05,
         max_force_tol=0.01,
         diag_algorithm="Divide-and-Conquer",
@@ -65,6 +66,7 @@ def write_siesta_runfile(
         num_bands_to_wannier_up=None,
         num_bands_to_wannier_down=None,
         s2w_mesh=2,
+        others:dict=None
 ):
     """
     Write Siesta input file
@@ -77,6 +79,7 @@ def write_siesta_runfile(
         mpgrid: MonkHorst Pack grid (default 21x1x1)
         electronic_temperature: electronic temperature (default 300K)
         variable_cell: Fix the cell during MD relaxation or not
+        md_steps: Maximum MD steps
         max_disp_len: Max atomic displacement in optimization move, in Ang
         max_force_tol: Max Force tolerance in coordinate optimization, in unit of eV/Ang
         diag_algorithm: By default it's Divide-and-Conquer. If job is to send to
@@ -123,9 +126,17 @@ def write_siesta_runfile(
     #   SaveRho             F
     #   WriteVoronoiPop     F
     #   NetCharge           0
+    #   WriteBands          false # write eigenvalues to .out file
 
     run_file = name + '_RUN.fdf'
     struct_file = name + '_STRUCT.fdf'
+
+    # prepare pseudopotential files
+    species = set()
+    for a in geom.atoms:
+        species.add(a.tag)
+    species = ','.join(species)
+    copy_psf_files(path=path, elements=species, functional=xc_functional)
 
     def check_directory(calc_type):
         # for some calculations, create new directory for them. This method will
@@ -151,9 +162,9 @@ PAO.BasisSize           {basis_size}
 PAO.EnergyShift         {pao_energy_shift} meV
 MeshCutoff              {mesh_cutoff} Ry
 %block kgrid.MonkhorstPack
-    {mp1}  0   0   0.0 
-    0   {mp2}  0   0.0
-    0   0   {mp3}  0.0
+    {mp1}   0   0   0.0 
+    0   {mp2}   0   0.0
+    0   0   {mp3}   0.0
 %endblock kgrid.MonkhorstPack
 ElectronicTemperature   {electronic_temperature} K
 
@@ -161,7 +172,7 @@ ElectronicTemperature   {electronic_temperature} K
 #   Molecular Dynamics
 ############################################
 MD.TypeOfRun            CG 
-MD.Steps                1000
+MD.Steps                {md_steps}
 MD.MaxDispl             {max_disp_len}  Ang
 MD.MaxForceTol          {max_force_tol} eV/Ang
 MD.VariableCell         {variable_cell}
@@ -195,14 +206,14 @@ SaveHS                  T   # Write .HSX file
 WriteCoorXmol           T   # Write optimized structure coordinates in .xyz file
 WriteCoorStep           T   # Write coordinate in every MD step to .XV file
 WriteMDXmol             F   # Write .ANI file readable by XMoL for animation of MD
-WriteForces             T   # Write forces of each MD step to output file""")
+WriteForces             T   # Write forces of each MD step to output file
+TS.HS.Save              T
+WFS.Energy.Min          -20 eV
+WFS.Energy.Max          20 eV""")
         if cdf:
             f.write("""
-TS.HS.Save              T
 CDF.Save                T
 CDF.Compress            3
-WFS.Energy.Min          -20 eV
-WFS.Energy.Max          20 eV
 """)
 #------------------------------------------------------------------------------#
         # write spin settings, by default spin unpolarized
@@ -215,8 +226,7 @@ WFS.Energy.Max          20 eV
 ############################################
 #   Spin Settings
 ############################################
-Spin                    {spin_mode}
-""")
+Spin                    {spin_mode}""")
         # this can only change the initial spin state, if read from .DM,
         # this parameter is useless. So, delete .DM file before change this
         # parameter
@@ -342,6 +352,16 @@ Siesta2Wannier90.NumberOfBands  {num_bands_to_wannier}""")
 Siesta2Wannier90.NumberOfBandsUp  {num_bands_to_wannier_up}
 Siesta2Wannier90.NumberOfBandsDown  {num_bands_to_wannier_down}
 """)
+#------------------------------------------------------------------------------#
+        # Other arguments
+        if others:
+            f.write("""
+############################################
+#   Others
+############################################
+""")
+            for key, value in others.items():
+                f.write('{}\t\t{}\n'.format(key, value))
 
 
 def write_struct_fdf(
@@ -724,7 +744,7 @@ def write_fcbuild_file(
         geom: Geometry, name: str, path='./phonon',
         supercell=[1, 0, 0],
         bandlines_kpath='GX',
-        bandlines_nkpts=100,
+        bandlines_nkpts=200,
 ):
     """
     Create fcbuild file for utility program fcbuild
@@ -826,6 +846,12 @@ def write_ifc_file(
         mixer_history: SCF mixing history, default 6
         scf_H_tol: SCF Hafmiltonian tolerance
     """
+    # prepare pseudopotential files
+    species = set()
+    for a in geom.atoms:
+        species.add(a.tag)
+    species = ','.join(species)
+    copy_psf_files(path=path, elements=species, functional=xc_functional)
 
     ifc_file = name + '.ifc.fdf'
     mp1, mp2, mp3 = mpgrid
