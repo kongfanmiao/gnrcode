@@ -1009,7 +1009,11 @@ done
 
 
 
-def copy_psf_files(path, elements, functional):
+def copy_psf_files(
+    path_from=None, 
+    path_to=None, 
+    elements=None, 
+    functional=None):
     """
     Copy pseudopotential files
     Args:
@@ -1018,16 +1022,24 @@ def copy_psf_files(path, elements, functional):
         functional: 'GGA' or 'LDA'
     """
     from shutil import copyfile
-    elements = elements.strip().split(',')
-    path_from = f'/mnt/d/kfm/Computation/dft/pseudopotentials/{functional}'
-    for e in elements:
-        e = e.strip()
-        psf_src = os.path.join(path_from, f'{e}.psf')
-        psf_dst = os.path.join(path, f'{e}.psf')
-        copyfile(psf_src, psf_dst)
-
-
-
+    if not elements:
+        raise ValueError('Please provide elements')
+    if not functional:
+        raise ValueError('Please provide functional')
+    if path_to:
+        raise ValueError('Please provide path_to')
+    if not path_from:
+        try:
+            path_from = f'/mnt/d/kfm/Computation/dft/pseudopotentials/{functional}'
+            elements = elements.strip().split(',')
+            for e in elements:
+                e = e.strip()
+                psf_src = os.path.join(path_from, f'{e}.psf')
+                psf_dst = os.path.join(path_to, f'{e}.psf')
+                copyfile(psf_src, psf_dst)
+        except Exception as e:
+            print(e)
+            raise ValueError('Please double check your path_from')
 
 
 
