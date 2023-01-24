@@ -1032,7 +1032,7 @@ def copy_psf_files(
         raise ValueError('Please provide elements')
     if not functional:
         raise ValueError('Please provide functional')
-    if path_to:
+    if not path_to:
         raise ValueError('Please provide path_to')
     if not path_from:
         try:
