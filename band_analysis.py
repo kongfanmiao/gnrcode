@@ -1785,3 +1785,17 @@ def chiral_phase_index(H, knpts=200, plot_phase=False,
         plt.axis('equal')
 
     return Z
+
+
+def bs_under_electric_field(H, field, plot=True):
+    h = H.copy()
+    g = h.geometry
+    for i in range(len(h)):
+        ymean = g.xyz.mean(axis=0)[1]
+        y = g.xyz[i,1] - ymean
+        h[i,i] = field*y
+    if plot:
+        band_structure(h, tb=True)
+    return h
+
+    
