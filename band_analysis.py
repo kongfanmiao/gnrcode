@@ -619,6 +619,7 @@ def dos(
     H,
     name=None,
     path="./opt",
+    tb=True,
     Erange=[-3, 3],
     figsize=(2, 4),
     dE=0.01,
@@ -1798,4 +1799,3 @@ def bs_under_electric_field(H, field, plot=True):
         band_structure(h, tb=True)
     return h
 
-    
