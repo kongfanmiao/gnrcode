@@ -27,6 +27,7 @@ def get_datetime():
 
 def write_siesta_runfile(
         geom: Geometry, name: str, path="./opt",
+        pseudo_path=None,
         xc_functional='GGA',
         xc_authors='PBE',
         basis_size='DZP',
@@ -71,6 +72,7 @@ def write_siesta_runfile(
     """
     Write Siesta input file
     Args:
+        pseudo_path: pseudopotential file path
         xc_functional: Exchange correlation functional (default GGA)
         xc_authors: functional flavor (default PBE)
         basis_size: SZ, SZP, DZ, DZP (default), TZ, TZP, ...
@@ -136,7 +138,8 @@ def write_siesta_runfile(
     for a in geom.atoms:
         species.add(a.tag)
     species = ','.join(species)
-    copy_psf_files(path=path, elements=species, functional=xc_functional)
+    copy_psf_files(path_from=pseudo_path, path_to=path, 
+        elements=species, functional=xc_functional)
 
     def check_directory(calc_type):
         # for some calculations, create new directory for them. This method will
@@ -819,6 +822,7 @@ AtomicCoordinatesFormat NotScaledCartesianAng
 
 def write_ifc_file(
         geom: Geometry, name: str, path='./phonon',
+        pseudo_path=None,
         xc_functional='GGA',
         xc_authors='PBE',
         basis_size='DZP',
@@ -834,6 +838,7 @@ def write_ifc_file(
     """
     Create ifc file for Siesta phonon calculation
     Args:
+        pseudo_path: pseudopotential file path
         xc_functional: default GGA
         xc_authors: functional flavor, default PBE
         basis_size: default DZP
@@ -851,7 +856,8 @@ def write_ifc_file(
     for a in geom.atoms:
         species.add(a.tag)
     species = ','.join(species)
-    copy_psf_files(path=path, elements=species, functional=xc_functional)
+    copy_psf_files(path_from=pseudo_path, path_to=path, 
+        elements=species, functional=xc_functional)
 
     ifc_file = name + '.ifc.fdf'
     mp1, mp2, mp3 = mpgrid
