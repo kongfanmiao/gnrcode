@@ -548,3 +548,27 @@ def write_xyz_trajectory(geo, path, filename, phvec, iev, energy, steps=100,
                 f.write("\t{}\t{:.7f}\t{:.7f}\t{:.7f}\n".format(
                     geo.atoms[a].tag, *tmpCoord[a]
                 ))
+
+
+def view_phonon(xsfFile,
+    width=500,
+    height=500,
+    frames=10,
+    amplitude=1,
+):
+    with open(xsfFile,'r') as xsf:
+        #phData = xsf.read().split('\n')
+        #phData = ''.join(phData[phData.index('PRIMCOORD')+2:])
+        phData = re.findall('[A-Z][a-z]?(?:  -?[0-9]+\.[0-9]+){6}', xsf.read())
+        # print(str(len(phData)))
+        N = len(phData)
+        phData = '\n'.join(phData)
+        phData = str(N)+'\n \n'+phData
+    xyzview = py3Dmol.view(width=width, height=height)
+    xyzview.addModel(phData, 'xyz',{'vibrate': 
+        {'frames':frames,'amplitude':amplitude}})
+    xyzview.setStyle({'sphere': {'colorscheme': 'Jmol', 'scale': 0.3},
+                        'stick': {'colorscheme': 'Jmol', 'radius': 0.2}})
+    xyzview.animate({'loop': 'backAndForth'})
+    xyzview.zoomTo()
+    xyzview.show()
