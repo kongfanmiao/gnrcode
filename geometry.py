@@ -255,15 +255,6 @@ def display2D(g, aid=False, sc=True, rotate=False, figsize=(5, 5),
     mpl.rcParams.update(mpl.rcParamsDefault)
 
 
-def SetView(xyzview, rotation, zoom):
-    xyzview.setStyle({'sphere': {'colorscheme': 'Jmol', 'scale': 0.3},
-                      'stick': {'colorscheme': 'Jmol', 'radius': 0.2}})
-    xyzview.rotate(rotation)
-    xyzview.zoomTo()
-    xyzview.zoom(zoom)
-    xyzview.show()
-
-
 
 def display3D(what, width=500, height=300, rotation=0, zoom=1):
     if isinstance(what, str):
@@ -276,7 +267,12 @@ def display3D(what, width=500, height=300, rotation=0, zoom=1):
             a.tag, *xyz[ia]) for ia, a, _ in what.iter_species()])
     xyzview = py3Dmol.view(width=width, height=height)
     xyzview.addModel(xyzstr, 'xyz')
-    SetView(xyzview, rotation, zoom)
+    xyzview.setStyle({'sphere': {'colorscheme': 'Jmol', 'scale': 0.3},
+                      'stick': {'colorscheme': 'Jmol', 'radius': 0.2}})
+    xyzview.rotate(rotation)
+    xyzview.zoomTo()
+    xyzview.zoom(zoom)
+    xyzview.show()
 
 
 
