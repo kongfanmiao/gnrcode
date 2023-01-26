@@ -256,7 +256,9 @@ def display2D(g, aid=False, sc=True, rotate=False, figsize=(5, 5),
 
 
 
-def display3D(what, width=500, height=300, rotation=0, zoom=1):
+def display3D(what, width=500, height=500, rotation=0, zoom=1,
+    index=False, index_font='sans-serif', index_font_size=15,
+    index_color='black'):
     if isinstance(what, str):
         with open(what, 'r') as f:
             xyzstr = f.read()
@@ -269,6 +271,16 @@ def display3D(what, width=500, height=300, rotation=0, zoom=1):
     xyzview.addModel(xyzstr, 'xyz')
     xyzview.setStyle({'sphere': {'colorscheme': 'Jmol', 'scale': 0.3},
                       'stick': {'colorscheme': 'Jmol', 'radius': 0.2}})
+    if index:
+        for i in range(xyz.shape[0]):
+            _x,_y,_z = xyz[i,:]
+            xyzview.addLabel(i, {'position':{'x':_x,'y':_y,'z':_z},
+                                'showBackground': False,
+                                'font': index_font,
+                                'fontSize':index_font_size,
+                                'fontColor':index_color,
+                                'alignment': 'center'})
+    
     xyzview.rotate(rotation)
     xyzview.zoomTo()
     xyzview.zoom(zoom)
