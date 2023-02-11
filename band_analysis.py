@@ -626,7 +626,7 @@ def dos(
     ret=False,
     color="k",
     mpgrid=[30, 1, 1],
-    gaussian_broadening=0.05,
+    gaussian_broadening=0.02,
     **kwargs,
 ):
 
@@ -653,8 +653,14 @@ def dos(
     mp = MonkhorstPack(H, mpgrid)
     dis = functools.partial(gaussian, sigma=gaussian_broadening)
     mpav = mp.apply.average
+    
+    def wrap_DOS(eigenstate):
+        # Calculate the DOS for the eigenstates
+        DOS = eigenstate.DOS(E, distribution=dis)
+        return DOS
+    
     if tb:
-        dos = mpav.DOS(E, distribution=dis)
+        dos = mpav.eigenstate(wrap=wrap_DOS, eta=True)
     else:
         try:
             with open(dosfile) as f:
@@ -663,7 +669,7 @@ def dos(
         except:
             print(
                 f"dos file {dosfile} not found or empty. Now calculate new dos")
-            dos = mpav.DOS(E, distribution=dis)
+            dos = mpav.eigenstate(wrap=wrap_DOS, eta=True)
             # write to file
             with open(dosfile, "w") as f:
                 np.savetxt(f, dos)
@@ -689,7 +695,7 @@ def pdos(
     Erange=[-5, 5],
     figsize=(4, 6),
     dE=0.01,
-    gaussian_broadening=0.05,
+    gaussian_broadening=0.02,
     mpgrid=[30, 1, 1],
     projected_atoms="all",
     projected_orbitals=["s", "pxy", "pz"],
@@ -717,8 +723,8 @@ def pdos(
     # The following part is similar to dos
     geom = H.geometry
     E0, E1 = Erange
-    emin = min(-30, E0)
-    emax = max(30, E1)
+    emin = min(-10, E0)
+    emax = max(10, E1)
     E = np.arange(emin, emax, dE)
     def num2str(x): return "m" + str(x)[1:] if x < 0 else str(x)
     erangestr = "{}to{}".format(num2str(emin), num2str(emax))
@@ -746,7 +752,8 @@ def pdos(
         # index of all the orbitals of each atom species
         orb_idx_dict = get_orb_list(geom)
 
-        def wrap(PDOS):
+        def wrap(eigenstate):
+            PDOS = eigenstate.PDOS(E, distribution=dis).squeeze()
             nonlocal pdos_dict_temp
             for a, all_idx in orb_idx_dict.items():
                 pd_a = {}
@@ -764,7 +771,7 @@ def pdos(
         # calculate the pdos, however, this pdos as single array is not as
         # useful as the dictionary version. So it won't be used.
         dis = functools.partial(gaussian, sigma=gaussian_broadening)
-        pDOS = mpav.PDOS(E, wrap=wrap, distribution=dis)
+        pDOS = mpav.eigenstate(wrap=wrap, eta=True)
         # Convert the final array pDOS into dictionary format
         pdos_dict = pdos_dict_temp.copy()  # copy the structure then change the content
         i = 0
@@ -855,6 +862,7 @@ def pdos(
     plt.ylim(Erange[0], Erange[-1])
     plt.xlim(0, pdosmax + 0.5)
     plt.legend(bbox_to_anchor=legend_position)
+
 
 
 @timer
@@ -1010,7 +1018,7 @@ def fat_bands(
                         wt_dict[a][orb].append(wt_k)
             return eigenstate.eig
 
-        eig = bsar.eigenstate(wrap=wrap_fat_bands)
+        eig = bsar.eigenstate(wrap=wrap_fat_bands, eta=True)
         # convert the items in wt_dict to numpy array
         for a, wt_a in wt_dict.items():
             for orb in wt_a.keys():
@@ -1233,16 +1241,17 @@ def plot_eigst_energy(
     Emesh = np.linspace(Emin, Emax, mesh_pts)
     lpdos = np.zeros((geom.na, mesh_pts))
 
-    def wrap(PDOS):
+    dis = functools.partial(gaussian, sigma=gaussian_broadening)
+    def wrap(eigenstate):
         # local projected dos
         # sum all the orbitals for each atom
+        PDOS = eigenstate.PDOS(Emesh, distribution=dis).squeeze()
         for io in range(PDOS.shape[0]):
             ia = geom.o2a(io)
             lpdos[ia, :] += PDOS[io, :]
         return lpdos
 
-    dis = functools.partial(gaussian, sigma=gaussian_broadening)
-    lpdos = mpav.PDOS(Emesh, wrap=wrap, distribution=dis)
+    lpdos = mpav.eigenstate(wrap=wrap, eta=True)
     lpdos = lpdos.sum(-1)
     plt.figure(figsize=figsize)
     plt.scatter(geom.xyz[:, 0], geom.xyz[:, 1], dotsize * lpdos)
