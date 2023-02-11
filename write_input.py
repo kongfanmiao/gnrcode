@@ -8,7 +8,10 @@ from .band_analysis import *
 from .tools import *
 from datetime import datetime
 
-KFM = "Fanmiao Kong"
+import socket, getpass
+userName = getpass.getuser()
+hostName = socket.gethostname()
+User = userName + '@' + hostName
 
 
 kpoints_dict = {
@@ -150,7 +153,7 @@ def write_siesta_runfile(
 
     mp1, mp2, mp3 = mpgrid
     with open(os.path.join(path, run_file), 'w') as f:
-        f.write(f"# {KFM} created at {get_datetime()}\n")
+        f.write(f"# {User} created at {get_datetime()}\n")
         f.write(f"""
 %include {struct_file}
 SystemName              {name}
@@ -389,7 +392,7 @@ def write_struct_fdf(
     num_sp = len(geom.atoms.atom)
 
     with open(os.path.join(path, struct_file), 'w') as f:
-        f.write(f"# {KFM} created at {get_datetime()}\n")
+        f.write(f"# {User} created at {get_datetime()}\n")
         f.write(f"""
 LatticeConstant     {lat_con} {unit}
 %block LatticeVectors""")
@@ -439,7 +442,7 @@ def write_optical_calc_fdf(
 #     broaden *= constant
 #     scissor *= constant
     with open(filepath, 'w') as f:
-        f.write(f"# {KFM} created at {get_datetime()}\n")
+        f.write(f"# {User} created at {get_datetime()}\n")
         f.write(f"""
 OpticalCalculation      True
 Optical.Energy.Minumum  {emin} eV
@@ -501,7 +504,7 @@ def write_denchar_file(
     xaxis = origin + np.array([5, 0, 0])
 
     with open(filepath, 'w') as f:
-        f.write(f"# {KFM} created at {get_datetime()}\n")
+        f.write(f"# {User} created at {get_datetime()}\n")
         f.write(f"""
 SystemLabel             {name}
 NumberOfSpecies         {num_sp}
@@ -608,7 +611,7 @@ def write_win_file(
         fe = fermi_energy
 
     with open(os.path.join(path, f"{name}.win"), 'w') as f:
-        f.write(f"! {KFM} created at {get_datetime()}\n")
+        f.write(f"! {User} created at {get_datetime()}\n")
         if restart:
             f.write(f'restart = {restart}\n')
         f.write(f"""
@@ -703,7 +706,7 @@ def write_wannier90insiesta_runfile(name: str):
     struct_file = name + 'STRUCT.fdf'
 
     with open(f'./wins/{run_file}', 'a') as f:
-        f.write(f"# {KFM} created at {get_datetime()}\n")
+        f.write(f"# {User} created at {get_datetime()}\n")
         f.write(f"""
 ############################################
 # Interface with Wannier90
@@ -771,7 +774,7 @@ def write_fcbuild_file(
     cellfrac = geom.cell/lc
 
     with open(os.path.join(path, fcbuild_file), 'w') as f:
-        f.write(f"# {KFM} created at {get_datetime()}\n")
+        f.write(f"# {User} created at {get_datetime()}\n")
         sc1, sc2, sc3 = supercell
         f.write(f"""
 SystemName           {name}
@@ -862,7 +865,7 @@ def write_ifc_file(
     ifc_file = name + '.ifc.fdf'
     mp1, mp2, mp3 = mpgrid
     with open(os.path.join(path, ifc_file), 'w') as f:
-        f.write(f"# {KFM} created at {get_datetime()}\n")
+        f.write(f"# {User} created at {get_datetime()}\n")
         f.write(f"""
 SystemName           {name}
 SystemLabel          {name}
@@ -1035,18 +1038,17 @@ def copy_psf_files(
     if not path_to:
         raise ValueError('Please provide path_to')
     if not path_from:
-        try:
+        if hostName == 'OUMS-OXBOX':
             path_from = f'/mnt/d/kfm/Computation/dft/pseudopotentials/{functional}'
-            elements = elements.strip().split(',')
-            for e in elements:
-                e = e.strip()
-                psf_src = os.path.join(path_from, f'{e}.psf')
-                psf_dst = os.path.join(path_to, f'{e}.psf')
-                copyfile(psf_src, psf_dst)
-        except Exception as e:
-            print(e)
-            raise ValueError('Please double check your path_from')
-
+        else:
+            raise ValueError(f'Please provide pseudo_path that stores pseudopotential \
+            files')
+    elements = elements.strip().split(',')
+    for e in elements:
+        e = e.strip()
+        psf_src = os.path.join(path_from, f'{e}.psf')
+        psf_dst = os.path.join(path_to, f'{e}.psf')
+        copyfile(psf_src, psf_dst)
 
 
 def write_orca_input_file(name, path, spin_multiplicity:int, charge=0,
@@ -1061,7 +1063,7 @@ def write_orca_input_file(name, path, spin_multiplicity:int, charge=0,
         5:'quintet', 6:'sextet', 7:'septet', 8:'octet'}
     
     with open(os.path.join(path,inp_file),'w') as f:
-        f.write(f"# {KFM} created at {get_datetime()}\n")
+        f.write(f"# {User} created at {get_datetime()}\n")
         f.write(f"""
 !UKS {functional} {basis_set} {optimize_control} {SCF_control} RIJCOSX
 !UNO
