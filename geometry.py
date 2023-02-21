@@ -258,7 +258,7 @@ def display2D(g, aid=False, sc=True, rotate=False, figsize=(5, 5),
 
 def display3D(what, width=500, height=500, rotation=0, zoom=1,
     index=False, index_font='sans-serif', index_font_size=15,
-    index_color='black'):
+    index_color='black', style='ball-stick'):
     if isinstance(what, str):
         with open(what, 'r') as f:
             xyzstr = f.read()
@@ -269,8 +269,11 @@ def display3D(what, width=500, height=500, rotation=0, zoom=1,
             a.tag, *xyz[ia]) for ia, a, _ in what.iter_species()])
     xyzview = py3Dmol.view(width=width, height=height)
     xyzview.addModel(xyzstr, 'xyz')
-    xyzview.setStyle({'sphere': {'colorscheme': 'Jmol', 'scale': 0.3},
-                      'stick': {'colorscheme': 'Jmol', 'radius': 0.2}})
+    if style == 'ball':
+        xyzview.setStyle('sphere')
+    elif style == 'ball-stick':
+        xyzview.setStyle({'sphere': {'colorscheme': 'Jmol', 'scale': 0.3},
+                          'stick': {'colorscheme': 'Jmol', 'radius': 0.2}})
     if index:
         for i in range(xyz.shape[0]):
             _x,_y,_z = xyz[i,:]
