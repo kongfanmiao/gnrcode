@@ -291,8 +291,8 @@ def display3D(what, width=500, height=500, rotation=0, zoom=1,
 
 
 
-def slice_show(g, xlim=[0, 10], ylim=None, figsize=(8, 5)):
-    display2D(g, aid=False, sc=False, figsize=figsize)
+def slice_show(g, xlim=[0, 10], ylim=None, figsize=(8, 5), aid=True, sc=False):
+    display2D(g, aid=aid, sc=sc, figsize=figsize)
     plt.xlim(*xlim)
     if ylim:
         plt.ylim(*ylim)
