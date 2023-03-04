@@ -1207,6 +1207,7 @@ def plot_eigst_band(
             H.xyz[:, 0], H.xyz[:, 1], dotsize * np.abs(esstate), c=esstate, cmap="bwr"
         )
     plt.axis("equal")
+    plt.axis('off')
 
 
 
@@ -1256,6 +1257,7 @@ def plot_eigst_energy(
     plt.figure(figsize=figsize)
     plt.scatter(geom.xyz[:, 0], geom.xyz[:, 1], dotsize * lpdos)
     plt.axis("equal")
+    plt.axis('off')
 
 
 @timer
