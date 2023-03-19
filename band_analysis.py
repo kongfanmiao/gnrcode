@@ -200,7 +200,7 @@ def band_structure(
     plt.xticks(kt, kl)
     plt.ylim(Erange[0], Erange[-1])
     plt.xlim(0, lk[-1])
-    plt.ylabel("$E-E_F$ (eV)")
+    plt.ylabel(r'$\rm E-E_F$ (eV)')
 
     # iterate spin
     for i, e in enumerate(eigh):
@@ -277,7 +277,7 @@ def plot_bands(name, path,
         plt.ylim(emin, emax)
     else:
         emin, emax = -1e2, 1e6
-    plt.ylabel("$E-E_F$ (eV)", fontsize=label_font)
+    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_font)
     plt.xticks(bands.ticks, bands.ticklabels)
     plt.xlim([min(bands.ticks), max(bands.ticks)])
     plt.tick_params(axis='x', labelsize=ticks_font)
@@ -397,7 +397,7 @@ def interpolated_bs(
     plt.figure(figsize=figsize)
     plt.xticks(kt, kl)
     plt.ylim(Erange[0], Erange[-1])
-    plt.ylabel("$E-E_F$ (eV)")
+    plt.ylabel(r'$\rm E-E_F$ (eV)')
 
     if overlap:
         for i, ek_pr in enumerate(eig_pr.T):
@@ -605,7 +605,7 @@ def energy_levels(
     # use Hermitian solver, read values
     plt.hlines(eig - fermi_energy, 0, 1, color=color, **kwargs)
     plt.ylim(Erange[0], Erange[-1])
-    plt.ylabel("$E-E_F$ (eV)")
+    plt.ylabel(r'$\rm E-E_F$ (eV)')
     plt.xticks([])
 
     if index:  # label the index of energy levels
@@ -681,7 +681,7 @@ def dos(
     plt.ylim(Erange[0], Erange[-1])
     plt.xlim(0, sel_dos.max() + 2)
     plt.plot(sel_dos, sel_E, color=color, **kwargs)
-    plt.ylabel("$E-E_F$ (eV)")
+    plt.ylabel(r'$\rm E-E_F$ (eV)')
     plt.xlabel("DOS ($eV^{-1}$)")
     if ret:
         return sel_dos
@@ -1306,7 +1306,7 @@ def ldos(
             ax.set_xticks([])
             ax.set_ylim(Emin, Emax)
             ax.set_title(location[i])
-        axes[0].set_ylabel("$E-E_F$ (eV)")
+        axes[0].set_ylabel(r'$\rm E-E_F$ (eV)')
     elif n == 1:
         for j in range(m):
             ax = axes
@@ -1314,7 +1314,7 @@ def ldos(
             ax.set_xticks([])
             ax.set_ylim(Emin, Emax)
             ax.set_title(location)
-        ax.set_ylabel("$E-E_F$ (eV)")
+        ax.set_ylabel(r'$\rm E-E_F$ (eV)')
     if ret:
         return eig_sub, ldos
 
