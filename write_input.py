@@ -317,7 +317,7 @@ WFS.Band.Max            {}
 %block ExternalElectricField
     {:.5f}  {:.5f}  {:.5f}  V/Ang
 %endblock ExternalElectricField
-SlabDipoleCorrection    {}
+Slab.DipoleCorrection    {}
 """.format(*E_field, slab_dipole_correction))
 #------------------------------------------------------------------------------#
         # optical calculation
