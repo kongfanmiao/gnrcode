@@ -5,16 +5,22 @@ import matplotlib.pyplot as plt
 import py3Dmol
 from sisl import Geometry, Atom, AtomicOrbital, plot
 from sklearn.preprocessing import scale
+from typing import Union
+
+import matplotlib.colors as mcolors
+from matplotlib.collections import LineCollection
+from matplotlib.colors import LinearSegmentedColormap
+
+from .tools import deprecated, timer
 
 
+@deprecated
 def adjust_axes(
     geom: Geometry,
     ao: int,
     ax: int,
-    ay: int,
-    rx=None,
-    ry=None,
-    CC_bond_length=None,
+    ay: int=None,
+    CC_bond_length=1.42,
     plot_geom=False,
 ):
     """
@@ -27,56 +33,26 @@ def adjust_axes(
         ao: index of atom that sits in the origin
         ax: index of atom that you want to be aligned along x axis
         ay: index of atom that you want to be aligned along y axis
-        rx: distance between ao and ax
-        ry: distance between ao and ay
         CC_bond_length: set the C-C bond_length. It works as a scale factor. If you 
             want to specify the rx and ry vector length
         plot_geom: choose if to plot the geometry after rotation
     """
-    # make sure it is a sisl Geometry object
-    if not isinstance(geom, Geometry):
-        raise TypeError("Please give a Geometry object as input")
-    # calculate the vectors pointing from ao to ax and ay respectively
-    Rx = geom.Rij(ao, ax)
-    Ry = geom.Rij(ao, ay)
-    # calculate the normal direction that is perpendicular to both x and y direction
-    Rz = np.cross(Rx, Ry)
-    # array of three directions
-    xyz = np.array([Rx, Ry, Rz])
-    # length of Rz vector
-    rz = np.linalg.norm(Rz)
-    # calculate the length of Rx and Ry vector if not provided
-    if not (rx or ry):
-        rx = geom.rij(ao, ax)
-        ry = geom.rij(ao, ay)
-    
-    if not CC_bond_length:
-        scale_factor = 1.0
-    else:
-        min_bond = 10000
-        n = None
-        for i,a,_ in geom.iter_species():
-            if a.Z == 6:
-                if not n:
-                    n = i
-                else:
-                    min_bond = min(min_bond, geom.rij(n,i))
-        scale_factor = CC_bond_length/min_bond
-    # do linear transformation
-    xyz_new = np.array([[rx * scale_factor , 0, 0], [0, ry * scale_factor, 0], [0, 0, rz]])
-    trans_matrix = np.dot(np.linalg.inv(xyz), xyz_new)
-    coords = geom.xyz
-    coords_new = np.dot(coords, trans_matrix)
-    geom.xyz = coords_new
-
-    if plot_geom:
-        display2D(geom, aid=True)
-        plt.axis("equal")
+    adjust_bond_length(geom, bond_length=CC_bond_length)
+    geom = rotate_gnr(geom, [ao,ax], plot_geom=plot_geom)
 
 
-def set_cell(geom: Geometry, a, b=30, c=30):
+
+def set_cell(geom: Geometry, 
+             a, b=30, c=30, 
+             bond_length=1.42):
     """
-    set the length of the unit cell vector along the ribbon direction
+    set the length of the unit cell vector along the ribbon direction.
+    Adjust the bond length if needed
+    Argument:
+        geom: sisl Geometry object
+        a: length of the unit cell vector along the ribbon direction
+        b: length of the unit cell vector along the y perpendicular direction
+        c: length of the unit cell vector along the x perpendicular direction
     """
     if isinstance(a, (list, tuple, np.ndarray)):
         geom.cell[0, :] = a
@@ -91,6 +67,21 @@ def set_cell(geom: Geometry, a, b=30, c=30):
     elif isinstance(c, (int, float)):
         geom.cell[2, :] = [0, 0, c]
     geom.set_nsc([3, 1, 1])
+
+
+def adjust_bond_length(geom: Geometry, bond_length=1.42):
+    # if the bond length is not 1.42, adjust it
+    min_bond = 10000
+    n = None
+    for i,a,_ in geom.iter_species():
+        if a.Z == 6:
+            if not n:
+                n = i
+            else:
+                min_bond = min(min_bond, geom.rij(n,i))
+    if min_bond != bond_length:
+        geom.xyz = geom.xyz * bond_length / min_bond
+    return geom
 
 
 def write_coord(geom: Geometry, name, path=None):
@@ -116,10 +107,11 @@ def write_coord(geom: Geometry, name, path=None):
 def create_geometry(
     name, path=None,
     cell=[[10, 0, 0], [0, 10, 0], [0, 0, 10]],
-    bond=1.42,
     plot_geom=True,
     aid=True,
     sc=False,
+    adjust_bond=True,
+    bond=1.42,
     text_color='green', 
     text_font_size=16,
     figsize=[5,5]
@@ -129,6 +121,8 @@ def create_geometry(
     then create a geometry object, the initial lattice vectors are
     [[10,0,0],[0,10,0],[0,0,10]]
     User set_cell method later to correct it.
+    by default, for tight binding model. 
+    Adjust bond length to 1.42 
     """
     file_name = name + ".xyz"
     if not path:
@@ -152,10 +146,11 @@ def create_geometry(
     coordinates = coordinates - np.mean(coordinates, 0)
 
     geom = Geometry(coordinates, atoms, cell)
+    if adjust_bond:
+        adjust_bond_length(geom, bond_length=bond)
     if plot_geom:
         display2D(geom, aid=aid, sc=sc, text_color=text_color, 
         text_font_size=text_font_size, figsize=figsize)
-        plt.axis("equal")
 
     return geom
 
@@ -227,18 +222,28 @@ def move_to_zcenter(g, plot_geom=True):
     return gz
 
 
-def display2D(g, aid=False, sc=True, rotate=False, figsize=(5, 5),
-    text_color='green', text_font_size=16, **kwargs):
+def guess_figsize(g):
+    """
+    Guess the figure size according to the geometry
+    """
+    xyz = g.xyz
+    minxyz = np.amin(xyz, 0)
+    maxxyz = np.amax(xyz, 0)
+    length = maxxyz - minxyz
+    ratio = length[0] / length[1]
+    figsize = (4 * ratio, 4)
+    return figsize
+
+
+
+def display2D(g, aid=False, sc=True, rotate=False, figsize=None,
+              text_color='green', text_font_size=16, **kwargs):
 
     mpl.rcParams['text.color'] = text_color
     mpl.rcParams['font.size'] = text_font_size
-    xyz = g.xyz
-    minxyz = np.amin(xyz, 0)
-    # print("minxyz:", np.around(minxyz, 4))
-    maxxyz = np.amax(xyz, 0)
-    # print("maxxyz:", np.around(maxxyz,2))
-    length = maxxyz - minxyz
-    # print("size:", np.around(length,4))
+
+    if figsize is None:
+        figsize = guess_figsize(g)
 
     plt.figure(figsize=figsize)
     if rotate:
@@ -248,11 +253,13 @@ def display2D(g, aid=False, sc=True, rotate=False, figsize=(5, 5),
     plot(g, atom_indices=aid, supercell=sc, **kwargs)
     plt.axis("equal")
 
-    if length[0] > length[1]:  # x is larger
-        plt.xlim(minxyz[0] - 6, maxxyz[0] + 6)
-    else:
-        plt.ylim(minxyz[1] - 2, maxxyz[1] + 2)
+    # if length[0] > length[1]:  # x is larger
+    #     plt.xlim(minxyz[0] - 6, maxxyz[0] + 6)
+    # else:
+    #     plt.ylim(minxyz[1] - 2, maxxyz[1] + 2)
     mpl.rcParams.update(mpl.rcParamsDefault)
+    plt.show()
+
 
 
 
@@ -380,7 +387,12 @@ def find_sublattice(g:Geometry, bond_length=1.42):
     return Asublat, Bsublat
 
 
-def mark_sublattice(g, figsize=[8,6]):
+def mark_sublattice(g, figsize=None):
+    """
+    Mark the sublattice of a geometry
+    """
+    if not figsize:
+        figsize = guess_figsize(g)
     A, B = find_sublattice(g)
     plt.figure(figsize=figsize)
     plt.axis('equal')
@@ -393,3 +405,230 @@ def mark_sublattice(g, figsize=[8,6]):
         plt.text(Axyz[i,0], Axyz[i,1], 'A', fontsize=12, color='r')
     for i in range(len(B)):
         plt.text(Bxyz[i,0], Bxyz[i,1], 'B', fontsize=12, color='b')
+
+
+
+def plot_gnr(gnr: Geometry,
+            repetitions: int,
+            bond_color='k',
+            bond_thickness=0.5,
+            highlight_middle=True,
+            highlight_color='r',
+            desired_bond_length_mm=4,
+            save=True,
+            save_name='tmp',
+            save_path='.',
+            gradient_color=False):
+    """
+    Plot a graphene nanoribbon.
+    Args:
+        gnr (Geometry): The graphene nanoribbon to plot.
+        repetitions (int): The number of repetitions of the unit cell.
+        bond_color (str): The color of the bonds.
+        bond_thickness (float): The thickness of the bonds.
+        highlight_middle (bool): Whether to highlight the middle unit cell.
+        highlight_color (str): The color of the highlighted unit cell.
+        desired_bond_length_mm (float): The desired bond length in mm.
+        save (bool): Whether to save the plot.
+        save_name (str): The name of the saved plot.
+        save_path (str): The path to save the plot.
+    Returns:
+        None
+    """
+    # rotate the gnr to along the x-axis
+    gnr = rotate_gnr(gnr, plot_geom=False)
+
+    mm_to_inches = 0.0393701
+    unit_cell_xyz = gnr.xyz
+    translation_vector = gnr.cell[0]
+    
+    # Calculate the real size of the molecule
+    total_translation_vector = np.array(translation_vector) * (repetitions - 1)
+    min_coords = np.min(unit_cell_xyz, axis=0)
+    max_coords = np.max(unit_cell_xyz, axis=0)
+    molecule_size = max_coords - min_coords + total_translation_vector
+    print(molecule_size)
+    
+    # Calculate the average C-C bond length
+    avg_bond_length = np.mean([np.linalg.norm(atom1 - atom2) for atom1 in unit_cell_xyz for atom2 in unit_cell_xyz if 1.3 < np.linalg.norm(atom1 - atom2) < 1.7])
+
+    # Determine the scaling factor
+    scaling_factor = (desired_bond_length_mm / avg_bond_length) * mm_to_inches
+
+    # Adjust the figure size based on the scaling factor
+    fig_width, fig_height = molecule_size[:2] * scaling_factor
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+    
+
+    if isinstance(bond_color,str):
+        bond_color = mcolors.to_rgb(bond_color)
+    if isinstance(highlight_color, str):
+        highlight_color = mcolors.to_rgb(highlight_color)
+
+    custom_cmap = LinearSegmentedColormap.from_list('custom_cmap', [highlight_color, bond_color])
+
+    def draw_bond(atom1, atom2, color, thickness, linestyle='-'):
+        xs = [atom1[0], atom2[0]]
+        ys = [atom1[1], atom2[1]]
+        ax.plot(xs, ys, color=color, linewidth=thickness, linestyle=linestyle, zorder=1)
+
+    def draw_gradient_bond(atom1, atom2, thickness, reverse_gradient=False):
+        x = np.linspace(atom1[0], atom2[0], 100)
+        y = np.linspace(atom1[1], atom2[1], 100)
+        cols = np.linspace(0, 1, len(x))
+
+        if reverse_gradient:
+            cols = np.flip(cols)
+
+        points = np.array([x, y]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+        lc = LineCollection(segments, cmap=custom_cmap)
+        lc.set_array(cols)
+        lc.set_linewidth(thickness)
+        line = ax.add_collection(lc)
+
+
+    for i in range(repetitions):
+        translated_xyz = unit_cell_xyz + np.array(translation_vector) * i
+        is_middle = highlight_middle and (i == repetitions // 2)
+
+        for atom1 in translated_xyz:
+            for atom2 in translated_xyz:
+                distance = np.linalg.norm(atom1 - atom2)
+                if 1.3 < distance < 1.7:
+                    if is_middle:
+                        draw_bond(atom1, atom2, highlight_color, bond_thickness)
+                    else:
+                        draw_bond(atom1, atom2, bond_color, bond_thickness)
+            
+            # connection bonds between two unit cells
+            if i < repetitions - 1:
+                translated_xyz_next = unit_cell_xyz + np.array(translation_vector) * (i + 1)
+                for atom2 in translated_xyz_next:
+                    distance = np.linalg.norm(atom1 - atom2)
+                    if 1.3 < distance < 1.7:
+                        if gradient_color:
+                            if is_middle or (highlight_middle and i == (repetitions // 2) - 1):
+                                reverse_gradient = (i == (repetitions // 2) - 1)
+                                draw_gradient_bond(atom1, atom2, bond_thickness, reverse_gradient)
+                            else:
+                                draw_bond(atom1, atom2, bond_color, bond_thickness)
+                        else:
+                            if is_middle or (highlight_middle and i == (repetitions // 2) - 1):
+                                # Change bond color at the middle of the bond
+                                middle_point = (atom1 + atom2) / 2
+                                if i == (repetitions // 2) - 1:
+                                    draw_bond(atom1, middle_point, bond_color, bond_thickness)
+                                    draw_bond(middle_point, atom2, highlight_color, bond_thickness)
+                                else:
+                                    draw_bond(atom1, middle_point, highlight_color, bond_thickness)
+                                    draw_bond(middle_point, atom2, bond_color, bond_thickness)
+                            else:
+                                draw_bond(atom1, atom2, bond_color, bond_thickness)
+
+            # Add virtual connection bonds for leftmost and rightmost unit cells
+            if i == 0:
+                translated_xyz_prev = unit_cell_xyz - np.array(translation_vector)
+                for atom2 in translated_xyz_prev:
+                    distance = np.linalg.norm(atom1 - atom2)
+                    if 1.3 < distance < 1.7:
+                        draw_bond(atom1, atom2, bond_color, bond_thickness, linestyle='--')
+
+            elif i == repetitions - 1:
+                translated_xyz_next2 = translated_xyz_next + np.array(translation_vector)
+                for atom2 in translated_xyz_next2:
+                    distance = np.linalg.norm(atom1 - atom2)
+                    if 1.3 < distance < 1.7:
+                        draw_bond(atom1, atom2, bond_color, bond_thickness, linestyle='--')
+
+
+    ax.set_aspect('equal', adjustable='box')
+    ax.axis('off')
+
+    if save:
+        png = os.path.join(save_path, f'{save_name}.png')
+        svg = os.path.join(save_path, f'{save_name}.svg')
+        plt.savefig(png, dpi=600, bbox_inches='tight', transparent=True)
+        plt.savefig(svg, dpi=600, bbox_inches='tight', transparent=True)
+    plt.show()
+
+
+
+def rotate_gnr(g: Geometry, axis:list=[], plot_geom:bool=False):
+    """
+    Rotate a GNR to align the given axis along the x-axis.
+    The axis is defined by two points given in axis argument, 
+    where the two points are indices of atoms in the GNR.
+    If axis is not given, the axis will be defined by the first
+    row of the g.cell.
+    """
+    if not axis:
+        v = g.cell[0]
+    else:
+        # get the two points
+        p1 = g.xyz[axis[0]]
+        p2 = g.xyz[axis[1]]
+        # get the vector
+        v = p2 - p1
+    # get the angle
+    theta = -np.degrees(np.arctan2(v[1], v[0]))
+    # rotate the geometry
+    g = g.rotate(theta, [0,0,1])
+    # set the y component of the cell to 20
+
+    g.cell[1] = np.array([0, 20, 0])
+    g = move_to_center(g, plot_geom=plot_geom)
+    return g
+
+
+
+def vec(length, angle):
+    """
+    Return a vector of given length and angle (in degrees).
+    The vector is three dimensional, with the z component being zero.
+    """
+    angle = np.radians(angle)
+    return np.array([length * np.cos(angle), length * np.sin(angle), 0])
+
+
+
+def add_hydrogen(g:Geometry, index:int, direction:Union[list, np.ndarray]):
+    """
+    add hydrogen passivation to the gnr at atom with given index. The C-H bond 
+    direction is given by direction, which is a 3D vector, eg. [1,0,0] for x direction.
+    The C-H bond length is determined by the average of other existing C-H bonds
+    in the geometry, if no other C-H bond exist, then by default the new C-H 
+    bond length is 1.09 angstrom.
+    """
+    # get the C-H bond length
+    # if no C-H bond exist, use 1.09 angstrom
+    bond_length = 1.09
+    # if C-H bond exist, use the average length
+    # get the C-H bond length, the C atom index and H atom index in a C-H bond
+    # are not necessarily adjacent
+    # get a hyodrogen atom at the same time
+    hydrogen = None
+    bond_length_list = []
+    for i in range(g.na):
+        if g.atoms[i].tag == 'C':
+            for j in range(g.na):
+                if g.atoms[j].tag == 'H':
+                    if not hydrogen:
+                        hydrogen = g.atoms[j]
+                    if np.linalg.norm(g.xyz[i] - g.xyz[j]) < 1.4:
+                        bond_length_list.append(np.linalg.norm(g.xyz[i] - g.xyz[j]))
+                # if no H atom found, then use the default bond length
+                else:
+                    hydrogen = Atom('H', [0,0,0])
+    if len(bond_length_list) > 0:
+        bond_length = np.mean(bond_length_list)
+    
+    # create geometry for hydrogen atom
+    g1 = Geometry([[0,0,0]], atoms=[hydrogen])
+    # then get the C-H bond vector
+    bond_vector = np.array(direction) * bond_length
+    # then add the hydrogen atom to the geometry using connect method
+    g = connect(g, g1, index, 0, bond_vector)
+        
+    return g

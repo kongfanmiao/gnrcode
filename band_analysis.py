@@ -19,10 +19,10 @@ from matplotlib.patches import Patch
 from typing import List, Tuple, Union, Dict
 
 kpoints_dict = {
-    "G": ("$\Gamma$", [0, 0, 0]),
-    "X": ("$X$", [0.5, 0., 0.]),
-    "M": ("$M$", [0.5, 0.5, 0]),
-    "K": ("$K$", [2.0 / 3, 1.0 / 3, 0]),
+    "G": ('$\Gamma$', [0, 0, 0]),
+    "X": ('X', [0.5, 0., 0.]),
+    "M": ('M', [0.5, 0.5, 0]),
+    "K": ('K', [2.0 / 3, 1.0 / 3, 0]),
 }
 
 
@@ -125,18 +125,33 @@ def band_structure(
     tick_labels="XGX",
     fermi_energy=0.0,
     knpts=200,
-    tb=True,
     spin_polarized=False,
     legend_position=[1.1, 0.9],
+    ticks_font=14,
+    label_font=14,
+    border_linewidth=1.5,
+    linewidth=1,
+    save=False,
+    save_name='tmp',
+    save_path='./',
+    save_format='png,svg',
     **kwargs,
 ):
     """
     Arguments:
-        tb: if in tight binding formalism
+        name, path: if given, calcualte band structure from the DFT, otherwise,
+            calculate from tight-binding model
         spin_polarized: spin polarized mode or not
+        save: save the figure or not
+        save_name: seedname of the saved figure
+        save_path: path to save the figure
+        save_format: format of the saved figure, by default save both png and svg
+            parse the argument by separating with comma.
     """
     if name:
         tb = False
+    else:
+        tb = True
     tkls = list(tick_labels)
     # Position of ticks in Brillouin zone
     tks = []
@@ -200,21 +215,40 @@ def band_structure(
     plt.xticks(kt, kl)
     plt.ylim(Erange[0], Erange[-1])
     plt.xlim(0, lk[-1])
-    plt.ylabel(r'$\rm E-E_F$ (eV)')
-
+    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_font)
+    plt.tick_params(axis='x', labelsize=ticks_font)
+    plt.tick_params(axis='y', labelsize=ticks_font)
+ 
     # iterate spin
     for i, e in enumerate(eigh):
         # iterate bands
         for j, ek in enumerate(e.T):
             lb = label[i] if j == 0 else None
+
+            # plot band only if the band has at least one value in the energy range
+            if not np.any((Erange[0] < ek) & (ek < Erange[1])):
+                continue
             plt.plot(lk, ek, linestyle=linestyle[i], color=color[i],
-                     label=lb)
+                     label=lb, linewidth=linewidth)
             # mark the band index
             if index:
                 if Erange[0] < ek[-1] < Erange[1]:
                     plt.annotate(j + 1, (lk[-1], ek[0]), color=color[i])
     if spin_polarized:
         plt.legend(bbox_to_anchor=legend_position)
+    
+    for border in ["left", "bottom", "top", "right"]:
+        plt.gca().spines[border].set_linewidth(border_linewidth)
+    
+    if save:
+        if tb:
+            model = 'TB'
+        else:
+            model = 'DFT'
+        for f in save_format.split(','):
+            filename = os.path.join(save_path, f'{save_name}.BandStructure.{model}.{f}')
+            plt.savefig(filename, bbox_inches='tight', dpi=600, transparent=True)
+    plt.show()
 
 
 def read_bands(
@@ -255,7 +289,9 @@ def plot_bands(name, path,
                linewidth=1,
                save=False,
                save_path='./',
-               save_format='pdf'
+               save_name='tmp',
+               save_format='png,svg',
+               **kwargs
                ):
     """
     Plot the band structure from .bands file
@@ -287,9 +323,10 @@ def plot_bands(name, path,
         band = bands[:, :, i]
         # spin unpolarized
         if bands.shape[1] == 1: # spin index
+            color = kwargs['color'] if 'color' in kwargs.keys() else None
             # select the bands that are in the given energy window
             if np.any(np.logical_and(band > emin, band < emax)):
-                plt.plot(ks, band[:, 0], color="k", 
+                plt.plot(ks, band[:, 0], color=color, 
                     linewidth=linewidth)
             # mark the band index
             if index & (Erange[0] < band[-1,0] < Erange[1]):
@@ -318,12 +355,13 @@ def plot_bands(name, path,
                    bbox_to_anchor=[1.1, 0.9])
 
     if save:
-        tl = bands.ticklabels
-        tl = ''.join([s.strip('$\\')[0] for s in tl])
-        nkpts = bands.k.shape[0]
-        save_name = f'{name}.BandStructure.{tl}{nkpts}.{emin}to{emax}eV.{save_format}'
-        plt.savefig(os.path.join(save_path, save_name), bbox_inches='tight')
-
+        # tl = bands.ticklabels
+        # tl = ''.join([s.strip('$\\')[0] for s in tl])
+        # nkpts = bands.k.shape[0]
+        for f in save_format.split(','):
+            filename = os.path.join(save_path, f'{save_name}.BandStructure.DFT.{f}')
+            plt.savefig(filename, bbox_inches='tight', dpi=600, transparent=True)
+    plt.show()
 
 
 @timer
@@ -383,7 +421,7 @@ def interpolated_bs(
                 f"eig file {eigfile} not found or empty. Now calculate new eig")
             bsar_pr = bs_pr.apply.array
             eig_pr = bsar_pr.eigh()
-            with open(eigfile[i], "w") as f:
+            with open(eigfile, "w") as f:
                 np.savetxt(f, eig_pr)
         lk_pr = bs_pr.lineark(ticks=False)
 
@@ -529,7 +567,7 @@ def band_gap(H, name=None, path="./opt", tb=True):
     return bg
 
 
-def chain_hamiltonian(Huc, nc: int, **kwargs):
+def chain_hamiltonian(Huc, nc: int, rotate_geom=True, **kwargs):
     """
     Contruct chain hamiltonian from unit cell hamiltonian.
     This method build hamiltonian matrix by calculating sparse matrix, different from construct_hamiltonian method. It is to deal with the interpolated Wannier function tight binding basis hamiltonian that is read from _hr.dat file.
@@ -538,6 +576,8 @@ def chain_hamiltonian(Huc, nc: int, **kwargs):
         nc: number of repeated cells
     """
     geom = Huc.geometry
+    if rotate_geom:
+        geom = rotate_gnr(geom)
     nsc = geom.nsc
     no = geom.no
     nsc0 = nsc[0]  # we focus on one-dimensional system
@@ -612,7 +652,7 @@ def energy_levels(
         which = np.where(np.logical_and(eig < Erange[-1], eig > Erange[0]))[0]
         for i in which:
             plt.text(1.2, eig[i], str(i))
-
+    plt.show()
 
 @timer
 def dos(
@@ -1158,22 +1198,34 @@ def fat_bands(
         for label, idx in legend_dict.items()
     ]
     plt.legend(handles=legend_elements, bbox_to_anchor=legend_position)
+    plt.show()
 
 
 
+@timer
 def plot_eigst_band(
     H,
-    offset: list = [0],
+    offset:int = 0,
     k=None,
-    figsize=(15, 5),
+    figsize=None,
     dotsize=500,
     phase=False,
     fermi_energy=0.0,
+    save=False,
+    save_name='tmp',
+    save_path='.',
+    save_format='png,svg',
 ):
     """
     Plot the eigenstate of a band, by default the topmost valence band
-    - offset: offset from the fermi level, or, the topmost valence band
+    - offset: offset from the HOMO
     """
+    import matplotlib.cm as cm
+    import matplotlib.colors as mcolors
+
+    geom = H.geometry
+    if not figsize:
+        figsize = guess_figsize(geom)
     if k is None:
         _k = [0, 0, 0]
     else:
@@ -1184,30 +1236,73 @@ def plot_eigst_band(
     # num_occ = len(eig[eig < fermi_energy])
     num_occ = len(H)//2
 
-    print("Index of the HOMO: ", num_occ-1)
-    bands = []
-    offset.sort()
-    for i in offset:
-        bands.append(num_occ-1+i)
-    print("Bands that are taken into account: ", bands)
-    print("Energy relative to Fermi level: ", [
-          H.eigh(k=_k)[i]-fermi_energy for i in bands])
-    plt.figure(figsize=figsize)
-    if not phase:
-        esnorm = es.sub(bands).norm2(sum=False).sum(0)
-        plt.scatter(H.xyz[:, 0], H.xyz[:, 1], dotsize * esnorm)
+    band = num_occ-1+offset
+    # print the index of the plotted energy level relative to HOMO and LUMO
+    if offset == 0:
+        label = 'HOMO'
+    elif offset < 0:
+        label = f'HOMO{offset}'
+    elif offset == 1:
+        label = 'LUMO' 
     else:
-        if len(offset) != 1:
-            raise ValueError(
-                "Choose only one band if you want to visualize the\
-            state with phase"
-            )
-        esstate = es.sub(bands).state
-        plt.scatter(
-            H.xyz[:, 0], H.xyz[:, 1], dotsize * np.abs(esstate), c=esstate, cmap="bwr"
-        )
-    plt.axis("equal")
+        label = f'LUMO+{offset-1}'
+    print("Energy level: {} ({:.4f} eV)".format(label, 
+                                    H.eigh(k=_k)[band]-fermi_energy))
+
+    fig, ax = plt.subplots(figsize=figsize)
+    # plot the bonds first 
+    for atom1 in geom.xyz:
+        for atom2 in geom.xyz:
+            distance = np.linalg.norm(atom1 - atom2)
+            if 1.3 < distance < 1.7:
+                xs = [atom1[0], atom2[0]]
+                ys = [atom1[1], atom2[1]]
+                ax.plot(xs, ys, color='k', linewidth=1, zorder=1)
+
+    # plot the eigenstate
+    if not phase:
+        esnorm = es.sub(band).norm2(sum=False).sum(0)
+        ax.scatter(H.xyz[:, 0], H.xyz[:, 1], dotsize * esnorm, zorder=2)
+    else:
+        esstate = es.sub(band).state.squeeze()
+        # plot the read part
+        esstate = np.real(esstate)
+        colorbar_max = np.abs(esstate).max()
+        colorbar_min = -colorbar_max
+        norm_esstate = (esstate-colorbar_min)/(colorbar_max-colorbar_min)
+        color = cm.bwr(norm_esstate)
+        ax.scatter(H.xyz[:, 0], H.xyz[:, 1], dotsize * np.abs(esstate), c=color,
+            zorder=2)
+        # add horizontal color bar
+        norm = mcolors.Normalize(vmin=colorbar_min, vmax=colorbar_max)
+        # Create the colorbar using the bwr_r colormap and the normalization instance
+        cb = plt.colorbar(cm.ScalarMappable(norm=norm, cmap='bwr'),ax=ax, 
+                          orientation='horizontal', label='Amplitude',
+                          fraction=0.1, pad=0.05, aspect=10)
+
+    # Calculate the current axis range and the desired additional margin
+    x_margin = 3
+    y_margin = 3
+    x_min, x_max = geom.xyz[:, 0].min(), geom.xyz[:, 0].max()
+    y_min, y_max = geom.xyz[:, 1].min(), geom.xyz[:, 1].max()
+
+    # Update xlim and ylim with the new margins
+    ax.set_xlim(x_min - x_margin, x_max + x_margin)
+    ax.set_ylim(y_min - y_margin, y_max + y_margin)
+
+    # Set the aspect ratio to 'equal' after updating xlim and ylim
+    ax.set_aspect('equal', adjustable='box')
     plt.axis('off')
+
+    if save:
+        for f in save_format.split(','):
+            # convert [0.1,0,0] to a string, remove brackets and remove extra spaces, 
+            # replace comma with dash 
+            kstr = str(_k).replace('[','').replace(']','').replace(' ','').replace(',','-')
+            filename = os.path.join(save_path, f'{save_name}.Eigenstate.{label}.k{kstr}.{f}')
+            plt.savefig(filename, bbox_inches='tight', dpi=600, transparent=True)
+
+    plt.show()
 
 
 
@@ -1217,11 +1312,15 @@ def plot_eigst_energy(
     E=0.0,
     Ewidth=0.1,
     k=None,
-    figsize=(15, 5),
+    figsize=None,
     dotsize=100,
     mpgrid=[30, 1, 1],
-    gaussian_broadening=0.05,
+    gaussian_broadening=0.01,
     dE=0.01,
+    save=False,
+    save_name='tmp',
+    save_path='.',
+    save_format='png,svg',
 ):
     """
     Plot the eigenstates whose eigenvalues are in a specific range, by default around fermi level
@@ -1233,6 +1332,8 @@ def plot_eigst_energy(
     """
 
     geom = H.geometry
+    if not figsize:
+        figsize = guess_figsize(geom)
     mp = MonkhorstPack(H, mpgrid)
     mpav = mp.apply.average
 
@@ -1254,10 +1355,40 @@ def plot_eigst_energy(
 
     lpdos = mpav.eigenstate(wrap=wrap, eta=True)
     lpdos = lpdos.sum(-1)
-    plt.figure(figsize=figsize)
-    plt.scatter(geom.xyz[:, 0], geom.xyz[:, 1], dotsize * lpdos)
-    plt.axis("equal")
+
+    fig, ax = plt.subplots(figsize=figsize)
+    # plot the bonds first 
+    for atom1 in geom.xyz:
+        for atom2 in geom.xyz:
+            distance = np.linalg.norm(atom1 - atom2)
+            if 1.3 < distance < 1.7:
+                xs = [atom1[0], atom2[0]]
+                ys = [atom1[1], atom2[1]]
+                ax.plot(xs, ys, color='k', linewidth=1, zorder=1)
+
+    # plot the eigenstate
+    ax.scatter(geom.xyz[:, 0], geom.xyz[:, 1], dotsize * lpdos)
+
+    # Calculate the current axis range and the desired additional margin
+    x_margin = 3
+    y_margin = 3
+    x_min, x_max = geom.xyz[:, 0].min(), geom.xyz[:, 0].max()
+    y_min, y_max = geom.xyz[:, 1].min(), geom.xyz[:, 1].max()
+
+    # Update xlim and ylim with the new margins
+    ax.set_xlim(x_min - x_margin, x_max + x_margin)
+    ax.set_ylim(y_min - y_margin, y_max + y_margin)
+
+    # Set the aspect ratio to 'equal' after updating xlim and ylim
+    ax.set_aspect('equal', adjustable='box')
     plt.axis('off')
+
+    if save:
+        for f in save_format.split(','):
+            filename = os.path.join(save_path, f'{save_name}.LDOSmap(no orbital).E{E}width{Ewidth}.{f}')
+            plt.savefig(filename, bbox_inches='tight', dpi=600, transparent=True)
+    plt.show()
+
 
 
 @timer
@@ -1327,9 +1458,11 @@ def ldos_map(
     k=[0, 0, 0],
     height=3.0,
     mesh=0.1,
-    figsize=(15, 5),
-    norm=True,
-    colorbar=False,
+    save=False,
+    save_name='tmp',
+    save_path='./',
+    save_format='png,svg',
+    figsize=None,
 ):
     """
     Localized Density of States
@@ -1338,6 +1471,16 @@ def ldos_map(
     - height: height above the plane of the ribbon, default 1.0 angstrom
     - mesh: mesh size of the grid, default 0.1 angstrom
     """
+    xyz = H.xyz
+    minxyz = np.amin(xyz, 0)
+    maxxyz = np.amax(xyz, 0)
+    length = maxxyz - minxyz
+    # Calculate the length-to-width ratio and adjust the figsize
+    ratio = length[0] / length[1]
+    if figsize is None:
+        figsize = (4 * ratio, 4)
+
+    attach_pz(H.geometry)
 
     Emin = E - Ewidth / 2
     Emax = E + Ewidth / 2
@@ -1346,22 +1489,30 @@ def ldos_map(
     eig = H.eigh(k=k)
     sub = np.where(np.logical_and(eig > Emin, eig < Emax))[0]
 
-    zmean = H.geometry.xyz[:,2].mean()
+    zmean = H.geometry.xyz[:, 2].mean()
     dos = 0
     for b in sub:
         grid = Grid(mesh, sc=H.sc)
-        index = grid.index([0, 0, zmean+height])
+        index = grid.index([0, 0, zmean + height])
         es_sub = es.sub(b)
         es_sub.wavefunction(grid)  # add the wavefunction to grid
         dos += grid.grid[:, :, index[2]].T ** 2
+    # normalize
+    dos = dos/dos.max()
 
     plt.figure(figsize=figsize)
-    plt.imshow(dos, cmap="hot")
-    plt.xticks([])
-    plt.yticks([])
-    if colorbar:
-        plt.colorbar()
+    plt.imshow(dos, cmap="hot", origin='lower')
+    plt.axis('off')
+    plt.colorbar(orientation='horizontal', fraction=0.1, pad=0.05, aspect=10,
+                 ticks=[0,1], label='LDOS')
+    if save:
+        for f in save_format.split(','):
+            filename = os.path.join(save_path, f'{save_name}.LDOSmap.E{E}width{Ewidth}.{f}')
+            plt.savefig(filename, bbox_inches='tight', dpi=600, transparent=True)
+    plt.show()
     return dos
+
+
 
 @timer
 def zak_phase(H):
@@ -1426,7 +1577,7 @@ def zak(contour, sub=None, gauge="R"):
 
 
 @timer
-def inter_zak(H, offset=0, fermi_energy=0.0):
+def inter_zak(H, offset:int=0, fermi_energy=0.0):
 
     bs = BandStructure(
         H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 200, [
@@ -1673,7 +1824,25 @@ def plot_wannier_centers(
     marker="*",
     marker_size=200,
     marker_color="green",
+    plot_sum=True,
+    index=False
 ):
+    """
+    Plot the wannier centres. 
+    Translate to home cell, only translate y and z components.
+    The x component will be translated manually.
+    Args:
+        geom: geometry object
+        name: name of geometry
+        path: path to wannier centres
+        figsize: figure size
+        sc: whether to plot supercell
+        marker: marker type
+        marker_size: marker size
+        marker_color: marker color
+        plot_sum: whether to plot the sum of wannier centres
+        index: whether to plot the index of wannier centres
+    """
     if not path:
         path = "./s2w/"
     cell = geom.cell
@@ -1688,30 +1857,112 @@ def plot_wannier_centers(
         for line in contents:
             if line.startswith("X"):
                 wc_raw.append(line)
-        # convert it to an array
-        wc = np.array(
-            list(
-                map(lambda x: list(map(float, x.strip().split()[1:])), wc_raw))
-        )
-        # Translate wannier centres to home cell
-        wc_hc = wc - np.floor((wc - (gcenter - abc / 2)) / abc).dot(cell)
-        # sum of wannier centers
-        wcc = wc_hc.sum(0)
-        temp = wcc.dot(np.linalg.inv(cell))
-        wcc = temp - np.floor(temp)
-        wcc_abs = np.around(wcc.dot(cell), 4)
-        wcc_rel_frac = wcc - ccenter.dot(np.linalg.inv(cell))
-        wcc_rel = wcc_rel_frac*cell
-        wcc_rel_frac = np.around(wcc_rel_frac, 4)
-        print("Sum of Wannier centres (Absolute):\n\t", wcc_abs)
-        # print("Sum of Wannier centres (Relative):\n\t", wcc_rel)
-        print("Sum of Wannier centres (Relative Fractional):\n\t", wcc_rel_frac)
+    # convert it to an array
+    wc = np.array(
+        list(
+            map(lambda x: list(map(float, x.strip().split()[1:])), wc_raw))
+    )
+    # Translate wannier centres to home cell
+    yzcell = cell.copy()
+    yzcell[0] = np.array([0,0,0])
+    wc_hc = wc - np.floor((wc - (gcenter - abc / 2)) / abc).dot(yzcell    )
+    # sum of wannier centers, relative to geomtry center
+    wc_hc  -= gcenter
+    wcc_abs = wc_hc.sum(0)
+    wcc_frac = wcc_abs.dot(np.linalg.inv(cell))
+    wcc_frac = np.around(wcc_frac, 4)
+    print("Sum of Wannier centres (Relative to geometry center, absolute):\n\t", wcc_abs)
+    # print("Sum of Wannier centres (Relative):\n\t", wcc_rel)
+    print("Sum of Wannier centres (Relative to geometry center, fractional):\n\t", wcc_frac)
 
+    # translate back to geometry center for plotting
+    wc_hc += gcenter
     plt.figure(figsize=figsize)
     plot(geom, supercell=sc)
     plt.scatter(wc_hc[:, 0], wc_hc[:, 1], s=marker_size,
                 c=marker_color, marker=marker)
+    if index:
+        for i, wc in enumerate(wc_hc):
+            # add the text with no shift
+            plt.text(wc[0], wc[1], str(i+1), color="red", fontsize=10,
+                     horizontalalignment='center', verticalalignment='center')
+    if plot_sum:
+        wcc_abs += gcenter
+        plt.scatter(wcc_abs[0], wcc_abs[1], s=marker_size*2,
+                    c="k", marker=marker)
     plt.axis("equal")
+    plt.axis('off')
+    plt.show()
+
+
+
+def view_wannier_centers(path, save=True, plot_sum=False, index=False):
+    filepath = glob.glob(os.path.join(path, '*_centres.xyz'))[0]
+    with open(filepath, 'r') as f:
+        lines = f.readlines()
+    atoms = []
+    atom_elements = []
+    wanniers = []
+    for line in lines:
+        if line.startswith('X'):
+            wanniers.append(list(map(float, line.split()[1:])))
+        elif line.startswith('C') or line.startswith('H'):
+            elements = line.split()[0]
+            atom_elements.append(elements)
+            atoms.append(list(map(float, line.split()[1:])))
+    atoms = np.array(atoms)
+    wanniers = np.array(wanniers)
+    fig, ax = plt.subplots()
+
+
+    def draw_bond_segment(ax, x1, y1, x2, y2, linewidth, color, round_end):
+        line = plt.Line2D([x1, x2], [y1, y2], linewidth=linewidth, 
+                          color=color, zorder=1,
+                          solid_capstyle='round' if round_end else 'butt')
+        ax.add_line(line)
+
+    for i in range(len(atoms)):
+        for j in range(i+1, len(atoms)):
+            d = np.linalg.norm(atoms[i] - atoms[j])
+            if d < 1.6:
+                x1, y1 = atoms[i, :2]
+                x2, y2 = atoms[j, :2]
+
+                if atom_elements[i] == atom_elements[j]:  # C-C bond
+                    draw_bond_segment(ax, x1, y1, x2, y2, linewidth=5, color=[0.33]*3, round_end=True)
+                else:  # C-H bond
+                    mid_point = (atoms[i] + atoms[j]) / 2
+                    color1 = [0.33]*3 if atom_elements[i] == 'C' else [0.8]*3
+                    color2 = [0.33]*3 if atom_elements[j] == 'C' else [0.8]*3
+                    round_end1 = atom_elements[i] == 'H'
+                    round_end2 = atom_elements[j] == 'H'
+                    draw_bond_segment(ax, mid_point[0], mid_point[1], x2, y2, linewidth=5, color=color2, round_end=round_end2)
+                    draw_bond_segment(ax, x1, y1, mid_point[0], mid_point[1], linewidth=5, color=color1, round_end=False)
+
+    ax.scatter(wanniers[:, 0], wanniers[:, 1], color='red', s=100, zorder=2)
+    if index:
+        for i in range(len(wanniers)):
+            x, y = wanniers[i, :2]
+            ax.text(x, y, str(i+1), fontsize=20, color='black', ha='center', va='center', zorder=3)
+
+    if plot_sum:
+        # Calculate the average position of the Wannier centers
+        avg_wannier = np.mean(wanniers, axis=0)
+        # Plot the average position with a blue diamond marker
+        ax.scatter(avg_wannier[0], avg_wannier[1], color='blue', marker='D', s=150, zorder=3, edgecolors='none', linewidths=1)
+
+    ax.set_xlim([atoms[:, 0].min()-1, atoms[:, 0].max()+1])
+    ax.set_ylim([atoms[:, 1].min()-1, atoms[:, 1].max()+1])
+    ax.set_aspect('equal', 'box')
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    plt.axis('off')
+    if save:
+        svg_file = filepath.split('.')[0]+'.svg'
+        plt.savefig(svg_file, transparent=True, bbox_inches='tight', dpi=600)
+
+    plt.show()
+
 
 
 def chiral_phase_index(H, knpts=200, plot_phase=False,
@@ -1799,7 +2050,7 @@ def chiral_phase_index(H, knpts=200, plot_phase=False,
     return Z
 
 
-def bs_under_electric_field(H, field, plot=True):
+def bs_under_electric_field(H, field, plot=True, **kwargs):
     h = H.copy()
     g = h.geometry
     for i in range(len(h)):
@@ -1807,6 +2058,6 @@ def bs_under_electric_field(H, field, plot=True):
         y = g.xyz[i,1] - ymean
         h[i,i] = field*y
     if plot:
-        band_structure(h, tb=True)
+        band_structure(h, **kwargs)
     return h
 

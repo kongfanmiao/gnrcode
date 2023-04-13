@@ -372,7 +372,7 @@ Siesta2Wannier90.NumberOfBandsDown  {num_bands_to_wannier_down}
 
 def write_struct_fdf(
         geom: Geometry, name: str, path="./opt",
-        lattice_constant=1.0,
+        lattice_constant=None,
         unit='Ang',
         fmt='.8f'
 ):
@@ -380,9 +380,11 @@ def write_struct_fdf(
     Write name_STRUCT.fdf file for Siesta calculation
     Args:
         geom: sisl Geometry object
-        lattice_constant: by default it's 1.0 Angstrom
+        lattice_constant: by default it's the cell[0]
     """
     struct_file = name + '_STRUCT.fdf'
+    if not lattice_constant:
+        lattice_constant = np.linalg.norm(geom.cell[0])
     lat_con = round(lattice_constant, 8)
     cell_raw = geom.cell
     # nomalized cell
@@ -542,6 +544,7 @@ Denchar.NumberPointsY   {ynpts:1d}
 Denchar.NumberPointsZ   {znpts:1d}
 """)
 
+# make write_win_file more well organized, well aligned, can you do that?
 
 def write_win_file(
         geom: Geometry, name, path="./s2w",
