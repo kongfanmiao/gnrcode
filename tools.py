@@ -2,11 +2,12 @@ from sisl import *
 import os
 import time
 import re, regex
-import glob, datetime
+import datetime
 import functools
 import numpy as np
 import matplotlib.pyplot as plt
 import warnings
+from glob import glob
 
 
 def deprecated(func):
@@ -387,7 +388,7 @@ def modify_wann_centres_file(path, n, translation_vector):
         translation_vector: a list of three floats"""
 
     # parent_directory = os.path.dirname(filename)
-    centres_file = glob.glob(f'{path}/*_centres.xyz')[0]
+    centres_file = glob(f'{path}/*_centres.xyz')[0]
     # pattern = r'_(\d+)\.xsf'
     # match = re.search(pattern, filename)
     # n = int(match.group(1))

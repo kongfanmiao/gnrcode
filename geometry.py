@@ -14,6 +14,14 @@ from matplotlib.colors import LinearSegmentedColormap
 from .tools import deprecated, timer
 
 
+def get_molecule_size(g: Geometry):
+    """
+    Get the size of a molecule, in Angstrom.
+    """
+    return np.max(g.xyz, axis=0) - np.min(g.xyz, axis=0)
+
+
+
 @deprecated
 def adjust_axes(
     geom: Geometry,
@@ -408,6 +416,14 @@ def mark_sublattice(g, figsize=None):
 
 
 
+def get_molecule_size(g: Geometry):
+    """
+    Get the size of a molecule, in Angstrom.
+    """
+    return np.max(g.xyz, axis=0) - np.min(g.xyz, axis=0)
+
+
+
 def plot_gnr(gnr: Geometry,
             repetitions: int,
             bond_color='k',
@@ -418,7 +434,9 @@ def plot_gnr(gnr: Geometry,
             save=True,
             save_name='tmp',
             save_path='.',
-            gradient_color=False):
+            save_format='png,svg',
+            gradient_color=False,
+            virtual_bonds=True):
     """
     Plot a graphene nanoribbon.
     Args:
@@ -432,6 +450,9 @@ def plot_gnr(gnr: Geometry,
         save (bool): Whether to save the plot.
         save_name (str): The name of the saved plot.
         save_path (str): The path to save the plot.
+        save_format (str): The format to save the plot.
+        gradient_color (bool): Whether to use a gradient color for the bonds.
+        virtual_bonds (bool): Whether to plot the virtual bonds.
     Returns:
         None
     """
@@ -493,15 +514,16 @@ def plot_gnr(gnr: Geometry,
         translated_xyz = unit_cell_xyz + np.array(translation_vector) * i
         is_middle = highlight_middle and (i == repetitions // 2)
 
-        for atom1 in translated_xyz:
-            for atom2 in translated_xyz:
-                distance = np.linalg.norm(atom1 - atom2)
-                if 1.3 < distance < 1.7:
-                    if is_middle:
-                        draw_bond(atom1, atom2, highlight_color, bond_thickness)
-                    else:
-                        draw_bond(atom1, atom2, bond_color, bond_thickness)
-            
+        for j, atom1 in enumerate(translated_xyz):
+            for k, atom2 in enumerate(translated_xyz):
+                if j < k:  # This line is added to ensure each bond is plotted only once
+                    distance = np.linalg.norm(atom1 - atom2)
+                    if 1.3 < distance < 1.7:
+                        if is_middle:
+                            draw_bond(atom1, atom2, highlight_color, bond_thickness)
+                        else:
+                            draw_bond(atom1, atom2, bond_color, bond_thickness)
+
             # connection bonds between two unit cells
             if i < repetitions - 1:
                 translated_xyz_next = unit_cell_xyz + np.array(translation_vector) * (i + 1)
@@ -526,31 +548,30 @@ def plot_gnr(gnr: Geometry,
                                     draw_bond(middle_point, atom2, bond_color, bond_thickness)
                             else:
                                 draw_bond(atom1, atom2, bond_color, bond_thickness)
+            
+            if virtual_bonds:
+                # Add virtual connection bonds for leftmost and rightmost unit cells
+                if i == 0:
+                    translated_xyz_prev = unit_cell_xyz - np.array(translation_vector)
+                    for atom2 in translated_xyz_prev:
+                        distance = np.linalg.norm(atom1 - atom2)
+                        if 1.3 < distance < 1.7:
+                            draw_bond(atom1, atom2, bond_color, bond_thickness, linestyle='--')
 
-            # Add virtual connection bonds for leftmost and rightmost unit cells
-            if i == 0:
-                translated_xyz_prev = unit_cell_xyz - np.array(translation_vector)
-                for atom2 in translated_xyz_prev:
-                    distance = np.linalg.norm(atom1 - atom2)
-                    if 1.3 < distance < 1.7:
-                        draw_bond(atom1, atom2, bond_color, bond_thickness, linestyle='--')
-
-            elif i == repetitions - 1:
-                translated_xyz_next2 = translated_xyz_next + np.array(translation_vector)
-                for atom2 in translated_xyz_next2:
-                    distance = np.linalg.norm(atom1 - atom2)
-                    if 1.3 < distance < 1.7:
-                        draw_bond(atom1, atom2, bond_color, bond_thickness, linestyle='--')
-
+                elif i == repetitions - 1:
+                    translated_xyz_next2 = translated_xyz_next + np.array(translation_vector)
+                    for atom2 in translated_xyz_next2:
+                        distance = np.linalg.norm(atom1 - atom2)
+                        if 1.3 < distance < 1.7:
+                            draw_bond(atom1, atom2, bond_color, bond_thickness, linestyle='--')
 
     ax.set_aspect('equal', adjustable='box')
     ax.axis('off')
 
     if save:
-        png = os.path.join(save_path, f'{save_name}.png')
-        svg = os.path.join(save_path, f'{save_name}.svg')
-        plt.savefig(png, dpi=600, bbox_inches='tight', transparent=True)
-        plt.savefig(svg, dpi=600, bbox_inches='tight', transparent=True)
+        for fmt in save_format.split(','):
+            filepath = os.path.join(save_path, f'{save_name}.{fmt}')
+            plt.savefig(filepath, dpi=300, bbox_inches='tight', transparent=True)
     plt.show()
 
 
@@ -577,7 +598,7 @@ def rotate_gnr(g: Geometry, axis:list=[], plot_geom:bool=False):
     g = g.rotate(theta, [0,0,1])
     # set the y component of the cell to 20
 
-    g.cell[1] = np.array([0, 20, 0])
+    g.cell[1] = np.array([0, np.linalg.norm(g.cell[1]), 0])
     g = move_to_center(g, plot_geom=plot_geom)
     return g
 
@@ -590,6 +611,8 @@ def vec(length, angle):
     """
     angle = np.radians(angle)
     return np.array([length * np.cos(angle), length * np.sin(angle), 0])
+
+
 
 
 
@@ -608,6 +631,7 @@ def add_hydrogen(g:Geometry, index:int, direction:Union[list, np.ndarray]):
     # get the C-H bond length, the C atom index and H atom index in a C-H bond
     # are not necessarily adjacent
     # get a hyodrogen atom at the same time
+
     hydrogen = None
     bond_length_list = []
     for i in range(g.na):
@@ -615,12 +639,14 @@ def add_hydrogen(g:Geometry, index:int, direction:Union[list, np.ndarray]):
             for j in range(g.na):
                 if g.atoms[j].tag == 'H':
                     if not hydrogen:
-                        hydrogen = g.atoms[j]
+                        hydrogen = g.atoms[j].copy()  # Make a copy of the existing hydrogen atom
                     if np.linalg.norm(g.xyz[i] - g.xyz[j]) < 1.4:
                         bond_length_list.append(np.linalg.norm(g.xyz[i] - g.xyz[j]))
-                # if no H atom found, then use the default bond length
-                else:
-                    hydrogen = Atom('H', [0,0,0])
+
+    # If no hydrogen atom was found, create a new one
+    if hydrogen is None:
+        hydrogen = Atom('H', [0, 0, 0])
+        
     if len(bond_length_list) > 0:
         bond_length = np.mean(bond_length_list)
     

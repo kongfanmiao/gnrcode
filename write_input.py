@@ -916,30 +916,6 @@ MD.FCdispl      < FC.fdf   # Displacement to use for the computation of the
 """)
 
 
-# def write_xcrysden_shell_script(
-#         path,
-#         keyword,
-#         file_format="cube",
-#         bash_file="export_xcrysden.sh",
-#         xcrysden_state_file="state_real.xcrysden"):
-#     """
-#     Write shell script to run XCrySDen automatically.
-#     The xcrysden state file should be named as state.xcrysden
-#     """
-
-#     file_path = os.path.join(path, bash_file)
-#     with open(file_path, 'w') as f:
-#         f.write(f"""
-# for input in `ls {keyword}`; do
-#     cp {xcrysden_state_file} tmp.xcrysden
-#     filename="${{input%.*}}.png"
-#     echo "
-# scripting::printToFile $filename windowdump
-# exit 0" >> tmp.xcrysden;
-#     xcrysden --{file_format} $input --script tmp.xcrysden;
-#     rm -f tmp.xcrysden;
-# done
-# """)
 
 
 def write_sbatch_file(name, path, program='siesta', cluster='htc',

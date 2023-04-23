@@ -1,3 +1,5 @@
+from scipy.spatial import ConvexHull, Delaunay
+import itertools
 import os
 import re
 import regex
@@ -17,6 +19,10 @@ from .tools import *
 from glob import glob
 from matplotlib.patches import Patch
 from typing import List, Tuple, Union, Dict
+
+import logging
+logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
+
 
 kpoints_dict = {
     "G": ('$\Gamma$', [0, 0, 0]),
@@ -218,7 +224,7 @@ def band_structure(
     plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_font)
     plt.tick_params(axis='x', labelsize=ticks_font)
     plt.tick_params(axis='y', labelsize=ticks_font)
- 
+
     # iterate spin
     for i, e in enumerate(eigh):
         # iterate bands
@@ -235,19 +241,23 @@ def band_structure(
                 if Erange[0] < ek[-1] < Erange[1]:
                     plt.annotate(j + 1, (lk[-1], ek[0]), color=color[i])
     if spin_polarized:
-        plt.legend(bbox_to_anchor=legend_position)
-    
+        lgd = plt.legend(bbox_to_anchor=legend_position)
+        lgd.get_frame().set_alpha(0)
+
     for border in ["left", "bottom", "top", "right"]:
         plt.gca().spines[border].set_linewidth(border_linewidth)
-    
+
     if save:
         if tb:
             model = 'TB'
         else:
             model = 'DFT'
         for f in save_format.split(','):
-            filename = os.path.join(save_path, f'{save_name}.BandStructure.{model}.{f}')
-            plt.savefig(filename, bbox_inches='tight', dpi=600, transparent=True)
+            filename = os.path.join(
+                save_path, 
+                f'{save_name}.BandStructure.{model}.{tick_labels}.E{Erange[0]}to{Erange[-1]}.{f}')
+            plt.savefig(filename, bbox_inches='tight',
+                        dpi=300, transparent=True)
     plt.show()
 
 
@@ -291,6 +301,7 @@ def plot_bands(name, path,
                save_path='./',
                save_name='tmp',
                save_format='png,svg',
+               color='k',
                **kwargs
                ):
     """
@@ -300,10 +311,9 @@ def plot_bands(name, path,
     if ticklabels:
         bands.ticklabels[:] = ticklabels
 
-    # for i in range(len(bands.ticklabels)):
-    #     if bands.ticklabels[i] == 'Gamma':
-    #         bands.ticklabels[i] = '\Gamma'
-    #     bands.ticklabels[i] = '$'+bands.ticklabels[i]+'$'
+    for i in range(len(bands.ticklabels)):
+        if bands.ticklabels[i] == 'Gamma':
+            bands.ticklabels[i] = '$\Gamma$'
 
     ks = bands.k.data
     plt.figure(figsize=figsize)
@@ -319,31 +329,32 @@ def plot_bands(name, path,
     plt.tick_params(axis='x', labelsize=ticks_font)
     plt.tick_params(axis='y', labelsize=ticks_font)
     # plot the data
-    for i in range(bands.shape[2]): # iterate bands
+    for i in range(bands.shape[2]):  # iterate bands
         band = bands[:, :, i]
         # spin unpolarized
-        if bands.shape[1] == 1: # spin index
-            color = kwargs['color'] if 'color' in kwargs.keys() else None
+        if bands.shape[1] == 1:  # spin index
             # select the bands that are in the given energy window
             if np.any(np.logical_and(band > emin, band < emax)):
-                plt.plot(ks, band[:, 0], color=color, 
-                    linewidth=linewidth)
+                plt.plot(ks, band[:, 0], color=color,
+                         linewidth=linewidth)
             # mark the band index
-            if index & (Erange[0] < band[-1,0] < Erange[1]):
-                plt.annotate(i + 1, (band.ticks[-1], band[-1,0]))
+            if index & (Erange[0] < band[-1, 0] < Erange[1]):
+                plt.annotate(i + 1, (band.ticks[-1], band[-1, 0]))
         # spin polarized
         elif bands.shape[1] == 2:
             # select the bands that are in the given energy window
             if np.any(np.logical_and(band > emin, band < emax)):
-                plt.plot(ks, band[:, 0], color='r', linestyle='-', 
-                    linewidth=linewidth)
-                plt.plot(ks, band[:, 1], color='b', linestyle='--', 
-                    linewidth=linewidth)
+                plt.plot(ks, band[:, 0], color='r', linestyle='-',
+                         linewidth=linewidth)
+                plt.plot(ks, band[:, 1], color='b', linestyle='--',
+                         linewidth=linewidth)
                 # mark the band index
-                if index & (Erange[0] < band[-1,0] < Erange[1]):
-                    plt.annotate(i + 1, (band.ticks[-1], band[-1,0]), color='r')
-                if index & (Erange[0] < band[-1,1] < Erange[1]):
-                    plt.annotate(i + 1, (band.ticks[-1], band[-1,1]), color='b')
+                if index & (Erange[0] < band[-1, 0] < Erange[1]):
+                    plt.annotate(
+                        i + 1, (band.ticks[-1], band[-1, 0]), color='r')
+                if index & (Erange[0] < band[-1, 1] < Erange[1]):
+                    plt.annotate(
+                        i + 1, (band.ticks[-1], band[-1, 1]), color='b')
     for border in ["left", "bottom", "top", "right"]:
         plt.gca().spines[border].set_linewidth(border_linewidth)
 
@@ -351,48 +362,80 @@ def plot_bands(name, path,
         from matplotlib.lines import Line2D
         custom_lines = [Line2D([0], [0], color='r', linestyle='-'),
                         Line2D([0], [0], color='b', linestyle='--')]
-        plt.legend(custom_lines, ['spin up', 'spin down'],
+        lgd = plt.legend(custom_lines, ['spin up', 'spin down'],
                    bbox_to_anchor=[1.1, 0.9])
+        lgd.get_frame().set_alpha(0)
 
     if save:
-        # tl = bands.ticklabels
-        # tl = ''.join([s.strip('$\\')[0] for s in tl])
+        tkl = bands.ticklabels
+        tkl = ''.join([s.strip('$\\')[0] for s in tkl])
         # nkpts = bands.k.shape[0]
         for f in save_format.split(','):
-            filename = os.path.join(save_path, f'{save_name}.BandStructure.DFT.{f}')
-            plt.savefig(filename, bbox_inches='tight', dpi=600, transparent=True)
+            filename = os.path.join(
+                save_path, f'{save_name}.BandStructure.DFT.{tkl}.E{Erange[0]}to{Erange[-1]}.{f}')
+            plt.savefig(filename, bbox_inches='tight',
+                        dpi=300, transparent=True)
     plt.show()
 
 
 @timer
 def interpolated_bs(
     name,
-    path,
+    path_int,
     H_int=None,
-    H_pr=None,
     path_pr=None,
+    H_pr=None,
     Erange=[-5, 0],
     figsize=(6, 4),
     tick_labels="XGX",
     overlap=False,
     knpts_int=30,
-    knpts_pr = 200,
+    knpts_pr=200,
+    ticks_font=14,
+    label_font=14,
+    border_linewidth=1.5,
+    linewidth=1,
     marker_size=30,
     marker_color="g",
     marker="o",
     facecolors="none",
+    save=False,
+    save_path='./',
+    save_name='tmp',
+    save_format='png,svg',
     **kwargs,
 ):
     """
     PLot the interpolated band structure from Wannier90 output file
     Arguments:
+        name: name of the system
+        path_int: path to the system
         H_int: interpolated Hamiltonian
+        path_pr: path to the pristine system
         H_pr: pristine Hamiltonian
+        Erange: energy range to plot
+        figsize: figure size
+        tick_labels: labels of the k-points
+        overlap: whether to overlap the pristine and interpolated band structures
+        knpts_int: number of k-points for the interpolated band structure   
+        knpts_pr: number of k-points for the pristine band structure
+        ticks_font: font size of the ticks
+        label_font: font size of the labels
+        border_linewidth: linewidth of the border
+        linewidth: linewidth of the band structure
+        marker_size: size of the marker
+        marker_color: color of the marker
+        marker: marker type
+        facecolors: facecolor of the marker
+        save: whether to save the figure
+        save_path: path to save the figure
+        save_name: name of the figure
+        save_format: format of the figure
     """
     if H_int:
         ham_int = H_int
     else:
-        win_path = os.path.join(path, name + ".win")
+        win_path = os.path.join(path_int, name + ".win")
         fwin = get_sile(win_path)
         ham_int = fwin.read_hamiltonian()
 
@@ -410,7 +453,8 @@ def interpolated_bs(
                 "Please provide the pristine Hamiltonian H_pr and path_pr")
         bs_pr = BandStructure(H_pr, tks, knpts_pr, tkls)
 
-        eigfile = os.path.join(path_pr, f"{name}.eig.{tick_labels}{knpts_pr}.txt")
+        eigfile = os.path.join(
+            path_pr, f"{name}.eig.{tick_labels}{knpts_pr}.txt")
         # try to read eigenvalues from file, if not exist then create one
         try:
             with open(eigfile) as f:
@@ -428,18 +472,18 @@ def interpolated_bs(
     bs_int = BandStructure(ham_int, tks, knpts_int, tkls)
     bsar_int = bs_int.apply.array
     eig_int = bsar_int.eigh()
-    fe = read_final_energy(name=name, path=path, which="fermi")
+    fe = read_final_energy(name=name, path=path_int, which="fermi")
     eig_int -= fe
 
     lk_int, kt, kl = bs_int.lineark(ticks=True)
     plt.figure(figsize=figsize)
-    plt.xticks(kt, kl)
+    plt.xticks(kt, kl, fontsize=label_font)
     plt.ylim(Erange[0], Erange[-1])
-    plt.ylabel(r'$\rm E-E_F$ (eV)')
+    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_font)
 
     if overlap:
         for i, ek_pr in enumerate(eig_pr.T):
-            plt.plot(lk_pr, ek_pr, color="k", **kwargs)
+            plt.plot(lk_pr, ek_pr, color="k", linewidth=linewidth, **kwargs)
         for j, ek_int in enumerate(eig_int.T):
             plt.scatter(
                 lk_int,
@@ -454,6 +498,21 @@ def interpolated_bs(
         for i, ek_int in enumerate(eig_int.T):
             plt.plot(lk_int, ek_int, **kwargs)
         plt.xlim(0, lk_int[-1])
+    plt.tick_params(axis='x', labelsize=ticks_font)
+    plt.tick_params(axis='y', labelsize=ticks_font)
+    # set the linewidth of the border
+    for axis in ['top', 'bottom', 'left', 'right']:
+        plt.gca().spines[axis].set_linewidth(border_linewidth)
+
+    if save:
+        for fmt in save_format.split(','):
+            plt.savefig(os.path.join(save_path, 
+                f'{save_name}.InterpolatedBandStructure.{tick_labels}.E{Erange[0]}to{Erange[-1]}.{fmt}'),
+                dpi=300,
+                transparent=True,
+                bbox_inches='tight')
+    plt.show()
+
 
 
 @timer
@@ -518,7 +577,8 @@ def unfold_band(
             msize = weight * (smax - smin) + smin
         else:
             msize = marker_size
-        plt.scatter(kpts, eigh - fermi_energy, s=msize, c=weight, cmap=cmap, **kwargs)
+        plt.scatter(kpts, eigh - fermi_energy, s=msize,
+                    c=weight, cmap=cmap, **kwargs)
         plt.ylabel("$E-E_F (eV)$")
         plt.xlabel("Wavenumber ($1 /\AA$)")
         if Erange:
@@ -622,7 +682,7 @@ def chain_hamiltonian(Huc, nc: int, rotate_geom=True, **kwargs):
     chain = geom.tile(nc, 0)
     chain.cell[0, 0] += 10
     chain = move_to_xycenter(chain, plot_geom=False)
-    chain.set_nsc([1,1,1])
+    chain.set_nsc([1, 1, 1])
     H = Hamiltonian.fromsp(chain, spm)
     return H
 
@@ -654,6 +714,7 @@ def energy_levels(
             plt.text(1.2, eig[i], str(i))
     plt.show()
 
+
 @timer
 def dos(
     H,
@@ -667,6 +728,12 @@ def dos(
     color="k",
     mpgrid=[30, 1, 1],
     gaussian_broadening=0.02,
+    linewidth=1,
+    border_linewidth=1.5,
+    save=False,
+    save_path='.',
+    save_format='png,svg',
+    save_name='tmp',
     **kwargs,
 ):
 
@@ -693,12 +760,12 @@ def dos(
     mp = MonkhorstPack(H, mpgrid)
     dis = functools.partial(gaussian, sigma=gaussian_broadening)
     mpav = mp.apply.average
-    
+
     def wrap_DOS(eigenstate):
         # Calculate the DOS for the eigenstates
         DOS = eigenstate.DOS(E, distribution=dis)
         return DOS
-    
+
     if tb:
         dos = mpav.eigenstate(wrap=wrap_DOS, eta=True)
     else:
@@ -719,10 +786,23 @@ def dos(
     sel_dos = dos[select_range]
     sel_E = E[select_range]
     plt.ylim(Erange[0], Erange[-1])
-    plt.xlim(0, sel_dos.max() + 2)
-    plt.plot(sel_dos, sel_E, color=color, **kwargs)
+    plt.xlim(0, sel_dos.max()*1.1)
+    plt.xticks([])
+    plt.plot(sel_dos, sel_E, color=color, linewidth=linewidth, **kwargs)
     plt.ylabel(r'$\rm E-E_F$ (eV)')
-    plt.xlabel("DOS ($eV^{-1}$)")
+    plt.xlabel("DOS (arb. u.)")
+
+    # set border linewidth
+    for spine in plt.gca().spines.values():
+        spine.set_linewidth(border_linewidth)
+
+    if save:
+        for fmt in save_format.split(','):
+            filename = os.path.join(save_path, 
+                f'{save_name}.DOS.{erangestr}.dE{dE}.broaden{gaussian_broadening}.mpgrid{mp1}_{mp2}_{mp3}.{fmt}')
+            plt.savefig(filename, bbox_inches='tight', transparent=True, dpi=300)
+    plt.show()
+
     if ret:
         return sel_dos
 
@@ -901,8 +981,8 @@ def pdos(
         ia += 1
     plt.ylim(Erange[0], Erange[-1])
     plt.xlim(0, pdosmax + 0.5)
-    plt.legend(bbox_to_anchor=legend_position)
-
+    lgd = plt.legend(bbox_to_anchor=legend_position)
+    lgd.get_frame().set_alpha(0)
 
 
 @timer
@@ -941,7 +1021,7 @@ def pzdos(
             plt.plot(E, pDOS[i, :], label=label)
         plt.xlim(E[0], E[-1])
         plt.ylim(0, None)
-        plt.xlabel(r"$E - E_F$ [eV]")
+        plt.xlabel(r"$\rm E - E_F$ (eV)")
         plt.ylabel(r"pz_DOS [1/eV]")
         plt.title("Project DOS on pz orbitals")
         plt.legend(loc="best", bbox_to_anchor=[1.4, 0.9])
@@ -966,8 +1046,8 @@ def fat_bands(
     path="./opt",
     Erange=(-10, 10),
     figsize=(6, 10),
-    tick_labels="XGX",
     knpts=200,
+    tick_labels="XGX",
     split_view=False,
     projected_atoms="all",
     projected_orbitals=["s", "pxy", "pz"],
@@ -975,21 +1055,55 @@ def fat_bands(
     index=False,
     legend_position=[1.2, 0.9],
     alpha=1.0,
+    fat_scale = 1,
+    tick_fontsize=14,
+    label_fontsize=14,
+    legend_fontsize=12,
+    linewidth=1,
+    border_linewidth=1.5,
+    save=False,
+    save_name=None,
+    save_format='png,svg',
+    save_path='.',
+    show=True
 ):
     """
     Plot the fat bands, showing the weight of each kinds of orbital of every band.
     Arguments:
+        H: Hamiltonian object.
+        name: name of the system.
+        path: path to the directory where the fat bands are saved.
+        Erange: energy range to plot.
+        figsize: figure size.
+        knpts: number of kpoints to plot.
         tick_labels: By default the fat bands for different atoms are plot in
             one figure and the ticks are from X to G to X. For split view the
             ticks are from G to X for each subplot by default.
         split_view: show fat bands for different atomic species in differetn
             subplots.
+        projected_atoms: the atoms that you want to project on. If it is
+            'all', then the projected atoms will be all the atoms in the
+            system.
+        projected_orbitals: the orbitals that you want to project on. If it
+            is 'all', then the projected orbitals will be all the orbitals
+            in the system.
         specify_atoms_and_orbitals: should follow the following format:
             'C: pz; N: pxy'. If the specify_atoms_and_orbitals argument is
             not None, then it will overwrite the projected_atoms and
             projected_orbitals arguments. If not, the projected orbitals will
             be all the orbitals in projected_orbitals of each atoms in
             projected_atoms.
+        index: whether to show the index of the bands.
+        legend_position: the position of the legend.
+        alpha: the transparency of the fat bands.
+        fat_scale: defines how fat the bands are.
+        tick_fontsize: the fontsize of the ticks.
+        label_fontsize: the fontsize of the labels.
+        legend_fontsize: the fontsize of the legend.
+        save: whether to save the figure.
+        save_name: the name of the saved figure.
+        save_format: the format of the saved figure.
+        save_path: the path to save the figure.
     """
 
     # Position of ticks in Brillouin zone
@@ -1015,7 +1129,6 @@ def fat_bands(
     else:
         proj_ats_orbs = convert_formated_str_to_dict(
             specify_atoms_and_orbitals)
-    print(proj_ats_orbs)
 
     # Try to read fatbands from file
     fbwtfile = os.path.join(
@@ -1090,7 +1203,7 @@ def fat_bands(
         ["purple", "thistle", "darkmagenta", "magenta", "violet", "indigo"],  # f
     ]
     Emin, Emax = Erange
-    dE = (Emax - Emin) / (figsize[1] * 5)
+    dE = (Emax - Emin) / (figsize[1] * 5) * fat_scale
     if split_view:
         na = len(proj_ats_orbs.keys())
         figsize_new = (na * figsize[0], figsize[1])
@@ -1102,19 +1215,19 @@ def fat_bands(
             figsize=figsize_new,
             gridspec_kw={"wspace": 0},
         )
-        axes[0].set_ylabel("$E-E_F$ [eV]")
+        axes[0].set_ylabel(r"$\rm E-E_F$ (eV)", fontsize=label_fontsize)
         axes[0].set_ylim(Emin, Emax)
         axes[0].set_xticks(k_tick)
-        axes[0].set_xticklabels(k_label)
+        axes[0].set_xticklabels(k_label, fontsize=label_fontsize)
         for i in range(na - 1):
             axes[i + 1].set_xticks([])
     else:
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot()
-        ax.set_ylabel("$E-E_F$ [eV]")
+        ax.set_ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
         ax.set_xlim(linear_k[0], linear_k[-1])
         ax.set_xticks(k_tick)
-        ax.set_xticklabels(k_label)
+        ax.set_xticklabels(k_label, fontsize=label_fontsize)
         ax.set_ylim(Emin, Emax)
 
     legend_dict = {}
@@ -1125,11 +1238,16 @@ def fat_bands(
             filled_range = np.array([e, e])
             if split_view:
                 for iax in range(na):
-                    axes[iax].plot(linear_k, e, color="k")
+                    if not np.any(np.logical_and(e < Emax, e > Emin)):
+                        continue
+                    axes[iax].plot(linear_k, e, color="k", linewidth=linewidth)
                     if index:
                         ax[-1].annotate(ib + 1, (linear_k[-1], e[-1]))
             else:
-                ax.plot(linear_k, e, color="k")
+                # plot the band only if it has at least one segment in the selected energy range
+                if not np.any(np.logical_and(e < Emax, e > Emin)):
+                    continue
+                ax.plot(linear_k, e, color="k", linewidth=linewidth)
                 if index:
                     ax.annotate(ib + 1, (linear_k[-1], e[-1]))
             # always iterate all the atoms and all the orbitals. Change their transparency
@@ -1197,19 +1315,34 @@ def fat_bands(
         Patch(facecolor=color_list[idx[1]][idx[0]], label=label)
         for label, idx in legend_dict.items()
     ]
-    plt.legend(handles=legend_elements, bbox_to_anchor=legend_position)
-    plt.show()
-
+    lgd = plt.legend(handles=legend_elements, bbox_to_anchor=legend_position,
+               fontsize=legend_fontsize)
+    lgd.get_frame().set_alpha(0)
+    plt.tick_params(axis='x', labelsize=tick_fontsize)
+    plt.tick_params(axis='y', labelsize=tick_fontsize)
+    # set border line width
+    for axis in ['top', 'bottom', 'left', 'right']:
+        plt.gca().spines[axis].set_linewidth(border_linewidth)
+    if save:
+        for fmt in save_format.split(','):
+            projs = specify_atoms_and_orbitals.replace(',','-').replace(':','-')
+            plt.savefig(
+                os.path.join(save_path, 
+                f'{save_name}.FatBands.{projs}.{tick_labels}.E{Emin}to{Emax}.{fmt}'),
+                bbox_inches='tight',
+                dpi=300, transparent=True)
+    if show:
+        plt.show()
 
 
 @timer
 def plot_eigst_band(
     H,
-    offset:int = 0,
+    offset: int = 0,
     k=None,
     figsize=None,
-    dotsize=500,
-    phase=False,
+    dotsize=1000,
+    phase=True,
     fermi_energy=0.0,
     save=False,
     save_name='tmp',
@@ -1243,21 +1376,22 @@ def plot_eigst_band(
     elif offset < 0:
         label = f'HOMO{offset}'
     elif offset == 1:
-        label = 'LUMO' 
+        label = 'LUMO'
     else:
         label = f'LUMO+{offset-1}'
-    print("Energy level: {} ({:.4f} eV)".format(label, 
-                                    H.eigh(k=_k)[band]-fermi_energy))
+    print("Energy level: {} ({:.4f} eV)".format(label,
+                                                H.eigh(k=_k)[band]-fermi_energy))
 
     fig, ax = plt.subplots(figsize=figsize)
-    # plot the bonds first 
-    for atom1 in geom.xyz:
-        for atom2 in geom.xyz:
-            distance = np.linalg.norm(atom1 - atom2)
-            if 1.3 < distance < 1.7:
-                xs = [atom1[0], atom2[0]]
-                ys = [atom1[1], atom2[1]]
-                ax.plot(xs, ys, color='k', linewidth=1, zorder=1)
+    # plot the bonds first
+    for i, atom1 in enumerate(geom.xyz):
+        for j, atom2 in enumerate(geom.xyz):
+            if i < j:
+                distance = np.linalg.norm(atom1 - atom2)
+                if 1.3 < distance < 1.7:
+                    xs = [atom1[0], atom2[0]]
+                    ys = [atom1[1], atom2[1]]
+                    ax.plot(xs, ys, color='k', linewidth=1, zorder=1)
 
     # plot the eigenstate
     if not phase:
@@ -1272,11 +1406,11 @@ def plot_eigst_band(
         norm_esstate = (esstate-colorbar_min)/(colorbar_max-colorbar_min)
         color = cm.bwr(norm_esstate)
         ax.scatter(H.xyz[:, 0], H.xyz[:, 1], dotsize * np.abs(esstate), c=color,
-            zorder=2)
+                   zorder=2)
         # add horizontal color bar
         norm = mcolors.Normalize(vmin=colorbar_min, vmax=colorbar_max)
         # Create the colorbar using the bwr_r colormap and the normalization instance
-        cb = plt.colorbar(cm.ScalarMappable(norm=norm, cmap='bwr'),ax=ax, 
+        cb = plt.colorbar(cm.ScalarMappable(norm=norm, cmap='bwr'), ax=ax,
                           orientation='horizontal', label='Amplitude',
                           fraction=0.1, pad=0.05, aspect=10)
 
@@ -1296,14 +1430,16 @@ def plot_eigst_band(
 
     if save:
         for f in save_format.split(','):
-            # convert [0.1,0,0] to a string, remove brackets and remove extra spaces, 
-            # replace comma with dash 
-            kstr = str(_k).replace('[','').replace(']','').replace(' ','').replace(',','-')
-            filename = os.path.join(save_path, f'{save_name}.Eigenstate.{label}.k{kstr}.{f}')
-            plt.savefig(filename, bbox_inches='tight', dpi=600, transparent=True)
+            # convert [0.1,0,0] to a string, remove brackets and remove extra spaces,
+            # replace comma with dash
+            kstr = str(_k).replace('[', '').replace(
+                ']', '').replace(' ', '').replace(',', '-')
+            filename = os.path.join(
+                save_path, f'{save_name}.Eigenstate.{label}.k{kstr}.{f}')
+            plt.savefig(filename, bbox_inches='tight',
+                        dpi=300, transparent=True)
 
     plt.show()
-
 
 
 @timer
@@ -1313,7 +1449,7 @@ def plot_eigst_energy(
     Ewidth=0.1,
     k=None,
     figsize=None,
-    dotsize=100,
+    dotsize=10,
     mpgrid=[30, 1, 1],
     gaussian_broadening=0.01,
     dE=0.01,
@@ -1344,6 +1480,7 @@ def plot_eigst_energy(
     lpdos = np.zeros((geom.na, mesh_pts))
 
     dis = functools.partial(gaussian, sigma=gaussian_broadening)
+
     def wrap(eigenstate):
         # local projected dos
         # sum all the orbitals for each atom
@@ -1357,14 +1494,15 @@ def plot_eigst_energy(
     lpdos = lpdos.sum(-1)
 
     fig, ax = plt.subplots(figsize=figsize)
-    # plot the bonds first 
-    for atom1 in geom.xyz:
-        for atom2 in geom.xyz:
-            distance = np.linalg.norm(atom1 - atom2)
-            if 1.3 < distance < 1.7:
-                xs = [atom1[0], atom2[0]]
-                ys = [atom1[1], atom2[1]]
-                ax.plot(xs, ys, color='k', linewidth=1, zorder=1)
+    # plot the bonds first
+    for i, atom1 in enumerate(geom.xyz):
+        for j, atom2 in enumerate(geom.xyz):
+            if i < j:
+                distance = np.linalg.norm(atom1 - atom2)
+                if 1.3 < distance < 1.7:
+                    xs = [atom1[0], atom2[0]]
+                    ys = [atom1[1], atom2[1]]
+                    ax.plot(xs, ys, color='k', linewidth=1, zorder=1)
 
     # plot the eigenstate
     ax.scatter(geom.xyz[:, 0], geom.xyz[:, 1], dotsize * lpdos)
@@ -1385,27 +1523,49 @@ def plot_eigst_energy(
 
     if save:
         for f in save_format.split(','):
-            filename = os.path.join(save_path, f'{save_name}.LDOSmap(no orbital).E{E}width{Ewidth}.{f}')
-            plt.savefig(filename, bbox_inches='tight', dpi=600, transparent=True)
+            filename = os.path.join(
+                save_path, f'{save_name}.LDOSmap(no orbital).E{E}width{Ewidth}.{f}')
+            plt.savefig(filename, bbox_inches='tight',
+                        dpi=300, transparent=True)
     plt.show()
 
 
 
-@timer
-def ldos(
-    H,
-    location,
-    Erange=[-3, 3],
-    figsize=None,
-    rescale=[0, 1],
-    color="coral",
-    ret=False,
-    **kwargs,
-):
+
+def ldos(H, 
+         location, 
+         Erange=[-3, 3], 
+         figsize=(6,4), 
+         gaussian_broadening=0.05,
+         plot=True,
+         ret=False,
+         linewidth=1,
+         border_linewidth=1.5,
+         save=False,
+         save_name='tmp',
+         save_path='.',
+         save_format='png,svg',
+         **kwargs):
     """
     Plot the local density of states
     Args:
-        location: index of the atom
+        H: hamiltonian
+        location: list of indices of the atoms
+        Erange: energy range
+        figsize: figure size
+        gaussian_broadening: gaussian broadening
+        plot: plot or not
+        ret: return the data or not
+        linewidth: linewidth of the plot
+        border_linewidth: linewidth of the border of the plot
+        save: save the plot or not
+        save_name: name of the saved file
+        save_path: path of the saved file
+        save_format: format of the saved file
+        **kwargs: other arguments for plt.plot
+    Returns:
+        X: energy
+        Y: local density of states
     """
     es = H.eigenstate()
     Emin, Emax = Erange
@@ -1413,41 +1573,202 @@ def ldos(
     sub = np.where(np.logical_and(eig > Emin, eig < Emax))
     es_sub = es.sub(sub)
     eig_sub = eig[sub]
-    es_sub_loc = es_sub.state[:, location]
-    ldos = np.multiply(es_sub_loc, np.conj(es_sub_loc))
-    ldos = ldos / ldos.max()  # from 0 to 1
-    # change the scale, now from rescale[0] to rescale[1]
-    ldos = ldos * (rescale[1] - rescale[0]) + rescale[0]
 
-    if len(ldos.shape) == 1:
-        m, n = ldos.shape[0], 1
-    else:
-        m, n = ldos.shape
-    if not figsize:
-        figsize = (1 * n, 5)
-    fig, axes = plt.subplots(
-        1, n, sharex=True, sharey=True, figsize=figsize, gridspec_kw={"wspace": 0}
-    )
-    if n > 1:
-        for i in range(n):
-            ax = axes[i]
-            for j in range(m):
-                ax.hlines(eig_sub[j], 0, 1, alpha=ldos[j, i],
-                          color="coral", **kwargs)
-            ax.set_xticks([])
-            ax.set_ylim(Emin, Emax)
-            ax.set_title(location[i])
-        axes[0].set_ylabel(r'$\rm E-E_F$ (eV)')
-    elif n == 1:
-        for j in range(m):
-            ax = axes
-            ax.hlines(eig_sub[j], 0, 1, alpha=ldos[j], color="coral", **kwargs)
-            ax.set_xticks([])
-            ax.set_ylim(Emin, Emax)
-            ax.set_title(location)
-        ax.set_ylabel(r'$\rm E-E_F$ (eV)')
+    X = np.linspace(Emin, Emax, 1000)
+    Y = np.zeros((X.shape[0], len(location)))
+
+    def gaussian(x, mu, sigma):
+        return np.exp(-(x - mu)**2 / (2 * sigma**2)) / (np.sqrt(2 * np.pi) * sigma)
+
+    for i, loc in enumerate(location):
+        es_sub_loc = es_sub.state[:, loc]
+        ldos = np.multiply(es_sub_loc, np.conj(es_sub_loc))
+        ldos = ldos / ldos.max()  # from 0 to 1
+
+        x = np.linspace(Emin, Emax, 1000)
+        y = np.zeros_like(x)
+
+        for j in range(ldos.shape[0]):
+            y += ldos[j] * gaussian(x, eig_sub[j], gaussian_broadening)
+
+        y = y / np.max(y)
+        Y[:, i] = y
+
+    if plot:
+        fig, ax = plt.subplots(figsize=figsize)
+
+        for i, loc in enumerate(location):
+            ax.plot(X, Y[:, i], label='Atom {}'.format(loc), 
+                    linewidth=linewidth, **kwargs)
+
+        ax.set_xlabel(r'$\rm E-E_F$ (eV)')
+        ax.set_ylabel('LDOS (arb. u.)')
+        ax.set_yticks([])
+        ax.set_xlim(Emin, Emax)
+        ax.legend()
+
+        # set the borader linewidth
+        for axis in ['top','bottom','left','right']:
+            ax.spines[axis].set_linewidth(border_linewidth)
+
+        if save:
+            for fmt in save_format.split(','):
+                location_str = '-'.join([str(loc) for loc in location])
+                filename = '{}.LDOS.Atom{}.E{}to{}.{}'.format(save_name, 
+                            location_str, Emin, Emax, fmt)
+                fig.savefig(os.path.join(save_path, filename), dpi=300,
+                            bbox_inches='tight', transparent=True)
+        plt.show()
+
     if ret:
-        return eig_sub, ldos
+        return X, Y
+
+@timer
+def cell_ldos(g:Geometry=None, 
+              repetitions:int=None, 
+              H:Hamiltonian=None,
+              end_cell_indices:list=None,
+              bulk_cell_indices:list=None,
+              fermi_energy=None,
+              Erange=[-3, 3], 
+              figsize=[6, 4],
+              gaussian_broadening=0.05, 
+              linewidth=1, 
+              border_linewidth=1.5,
+              plot_geom=True, 
+              save=False, 
+              save_name='tmp',
+              save_path='.', 
+              save_format='png,svg',
+              vertical_plot=False,
+              **kwargs):
+    """
+    Calculate the local density of states of the end cell and the middle cell,
+    provide either the geometry with repetitions or the Hamiltonian.
+    Args:
+        g: geometry
+        repetitions: number of repetitions
+        Erange: energy range
+        figsize: figure size of LDOS plot
+        gaussian_broadening: gaussian broadening
+        linewidth: linewidth of the plot
+        border_linewidth: linewidth of the border of the plot
+        plot_geom: plot the geometry or not
+        save: save the plot or not
+        save_name: name of the saved file
+        save_path: path of the saved file
+        save_format: format of the saved file
+        **kwargs: other arguments for plt.plot
+    """
+    if g is not None:
+        G = g.tile(repetitions,0)
+        G = rotate_gnr(G)
+        G.set_nsc([1,1,1])
+        G.cell[0,0] += 20
+        G = move_to_center(G, plot_geom=False)
+        H = construct_hamiltonian(G)
+        fermi_energy = 0.0
+
+        # Find the indices of the end cell
+        end_cell_indices = np.arange(0,g.na)
+        bulk_index = repetitions//2
+        bulk_cell_indices = np.arange((bulk_index-1)*g.na, bulk_index*g.na)
+    else:
+        # assert H is not None, "Either geometry or Hamiltonian must be provided"
+        try:
+            G = H.geometry
+            assert end_cell_indices is not None
+            assert bulk_cell_indices is not None
+            assert fermi_energy is not None
+        except:
+            raise ValueError("without providing geometry and repetitions, \
+                             Hamiltonian and the indices of end and bulk cell \
+                             must be provided. Fermi energy also need to be provided.")
+
+    if plot_geom:
+        # Plot the bonds in geometry G, with end cell in red and bulk cell in magenta, the rest 
+        # in teal, scale the figsize with the geometry size
+        molecule_size = get_molecule_size(G)
+        fig_with, fig_height = molecule_size[:2] * 0.5
+        fig1, ax1 = plt.subplots(figsize=(fig_with, fig_height))
+        # plot the bonds in G. Neighbours closer than 1.6 Angstrom are considered as bonded
+        # Plot the bonds in end cell in teal, bulk cell in magenta, and the rest in black
+
+        for i in range(G.na):
+            for j in range(i+1, G.na):
+                if G.rij(i, j) < 1.6:
+                    if i in end_cell_indices and j in end_cell_indices:
+                        ax1.plot([G.xyz[i, 0], G.xyz[j, 0]], [G.xyz[i, 1], G.xyz[j, 1]],
+                                color='teal', linewidth=3)
+                    elif i in bulk_cell_indices and j in bulk_cell_indices:
+                        ax1.plot([G.xyz[i, 0], G.xyz[j, 0]], [G.xyz[i, 1], G.xyz[j, 1]],
+                                color='magenta', linewidth=3)
+                    else:
+                        ax1.plot([G.xyz[i, 0], G.xyz[j, 0]], [G.xyz[i, 1], G.xyz[j, 1]],
+                                color='black', linewidth=3)
+
+        # set equal aspect ratio
+        ax1.set_aspect('equal')
+        # remove axes
+        ax1.set_axis_off()
+        # show the plot
+        plt.show()
+
+    # Calculate the LDOS of the end cell and the bulk cell
+    x_end, y_end = ldos(H, end_cell_indices, Erange=np.array(Erange)+fermi_energy, 
+                        gaussian_broadening=gaussian_broadening,
+                        plot=False, ret=True)
+    x_bulk, y_bulk = ldos(H, bulk_cell_indices, Erange=np.array(Erange)+fermi_energy,
+                            gaussian_broadening=gaussian_broadening,
+                            plot=False, ret=True)
+    x_end -= fermi_energy
+    x_bulk -= fermi_energy
+    print(x_end[0], x_end[-1])
+    
+    
+    # Plot the LDOS of the end cell and the bulk cell
+    if not vertical_plot:
+        fig2, ax2 = plt.subplots(figsize=figsize)
+        ax2.plot(x_end, y_end.sum(axis=1), label='End cell', color='teal',
+                 linewidth=linewidth, **kwargs)
+        ax2.plot(x_bulk, y_bulk.sum(axis=1), label='Bulk cell', color='magenta',
+                 linewidth=linewidth, **kwargs)
+        ax2.set_xlabel(r'$\rm E-E_F$ (eV)')
+        ax2.set_xlim(Erange[0], Erange[1])
+        ax2.set_ylabel('LDOS (arb. u.)')
+        ax2.set_ylim(0, None)
+        ax2.set_yticks([])
+    else:
+        fig2, ax2 = plt.subplots(figsize=figsize[::-1])
+        ax2.plot(y_end.sum(axis=1), x_end, label='End cell', color='teal',
+                 linewidth=linewidth, **kwargs)
+        ax2.plot(y_bulk.sum(axis=1), x_bulk, label='Bulk cell', color='magenta',
+                 linewidth=linewidth, **kwargs)
+        ax2.set_ylabel(r'$\rm E-E_F$ (eV)')
+        ax2.set_ylim(Erange[0], Erange[1])
+        ax2.set_xlabel('LDOS (arb. u.)')
+        ax2.set_xlim(0, None)
+        ax2.set_xticks([])
+
+    legend = plt.legend()
+    legend.get_frame().set_alpha(0)
+
+    # set the borader linewidth
+    for axis in ['top', 'bottom', 'left', 'right']:
+        ax2.spines[axis].set_linewidth(border_linewidth)
+
+    if save:
+        for fmt in save_format.split(','):
+            if plot_geom:
+                geom_file = '{}.{}'.format(save_name, fmt)
+                fig1.savefig(os.path.join(save_path, geom_file), dpi=300,
+                             bbox_inches='tight', transparent=True)
+            ldos_file = '{}.LDOS.Cell.E{}to{}.{}'.format(save_name, Erange[0],
+                                                         Erange[1], fmt)
+            fig2.savefig(os.path.join(save_path, ldos_file), dpi=300,
+                         bbox_inches='tight', transparent=True)
+    plt.show()
+  
 
 
 @timer
@@ -1504,14 +1825,15 @@ def ldos_map(
     plt.imshow(dos, cmap="hot", origin='lower')
     plt.axis('off')
     plt.colorbar(orientation='horizontal', fraction=0.1, pad=0.05, aspect=10,
-                 ticks=[0,1], label='LDOS')
+                 ticks=[0, 1], label='LDOS')
     if save:
         for f in save_format.split(','):
-            filename = os.path.join(save_path, f'{save_name}.LDOSmap.E{E}width{Ewidth}.{f}')
-            plt.savefig(filename, bbox_inches='tight', dpi=600, transparent=True)
+            filename = os.path.join(
+                save_path, f'{save_name}.LDOSmap.E{E}width{Ewidth}.{f}')
+            plt.savefig(filename, bbox_inches='tight',
+                        dpi=300, transparent=True)
     plt.show()
     return dos
-
 
 
 @timer
@@ -1577,7 +1899,7 @@ def zak(contour, sub=None, gauge="R"):
 
 
 @timer
-def inter_zak(H, offset:int=0, fermi_energy=0.0):
+def inter_zak(H, offset: int = 0, fermi_energy=0.0):
 
     bs = BandStructure(
         H, [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]], 200, [
@@ -1818,7 +2140,7 @@ def Z2(H, num_bands=None):
 def plot_wannier_centers(
     geom,
     name,
-    path:str=None,
+    path: str = None,
     figsize=(6, 4),
     sc=False,
     marker="*",
@@ -1864,10 +2186,10 @@ def plot_wannier_centers(
     )
     # Translate wannier centres to home cell
     yzcell = cell.copy()
-    yzcell[0] = np.array([0,0,0])
-    wc_hc = wc - np.floor((wc - (gcenter - abc / 2)) / abc).dot(yzcell    )
+    yzcell[0] = np.array([0, 0, 0])
+    wc_hc = wc - np.floor((wc - (gcenter - abc / 2)) / abc).dot(yzcell)
     # sum of wannier centers, relative to geomtry center
-    wc_hc  -= gcenter
+    wc_hc -= gcenter
     wcc_abs = wc_hc.sum(0)
     wcc_frac = wcc_abs.dot(np.linalg.inv(cell))
     wcc_frac = np.around(wcc_frac, 4)
@@ -1896,9 +2218,29 @@ def plot_wannier_centers(
 
 
 
-def view_wannier_centers(path, save=True, plot_sum=False, index=False):
-    filepath = glob.glob(os.path.join(path, '*_centres.xyz'))[0]
-    with open(filepath, 'r') as f:
+def view_wannier_centers(path, 
+                         plot_sum=True, 
+                         index=False, 
+                         bond_cutoff=1.6,
+                         expand_length=0.71,
+                         scaling_factor = 0.5,
+                         save=True, 
+                         save_format='png,svg'):
+    """Plot the Wannier centers for a given path.
+    Args:
+        path (str): path to the folder containing the .XV and _centres.xyz files
+        plot_sum (bool): whether to plot the sum of the Wannier centers
+        index (bool): whether to plot the index of the Wannier centers
+        bond_cutoff (float): the cutoff distance to determine whether two atoms are bonded
+        expand_length (float): the length to expand the box containing geometry
+        scaling_factor (float): the scaling factor to scale the geometry
+        save (bool): whether to save the plot
+        save_format (str): the format to save the plot
+    """
+    from glob import glob
+
+    xyz_file = glob(os.path.join(path, '*_centres.xyz'))[0]
+    with open(xyz_file, 'r') as f:
         lines = f.readlines()
     atoms = []
     atom_elements = []
@@ -1912,11 +2254,58 @@ def view_wannier_centers(path, save=True, plot_sum=False, index=False):
             atoms.append(list(map(float, line.split()[1:])))
     atoms = np.array(atoms)
     wanniers = np.array(wanniers)
-    fig, ax = plt.subplots()
 
+    # Read the unit cell from .XV file
+    xv_file = glob(os.path.join(path, '*.XV'))[0]
+    g = get_sile(xv_file).read_geometry()
+    cell = g.cell
+    # translate to home cell if they are shifted by multiples of cell vectors
+    gcenter = g.center(what='xyz')
+    ccenter = g.center(what='cell')
+    abc = cell.diagonal()
+
+    # Calculate the real size of the geometry
+    min_coords = np.min(atoms, axis=0)
+    max_coords = np.max(atoms, axis=0)
+    geometry_size = max_coords - min_coords
+
+    # Adjust the figure size based on the scaling factor
+    fig_width, fig_height = geometry_size[:2] * scaling_factor
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+
+    # Find the convex hull of the geometry (atoms)
+    def expand_convex_hull(points, hull, expand_length):
+        expanded_hull_points = points.copy()
+        for i in range(len(hull.simplices)):
+            normal = hull.equations[i, :-1]
+            simplex = hull.simplices[i]
+            centroid = np.mean(points[simplex], axis=0)
+            displacement = (expand_length / np.linalg.norm(normal)) * normal
+            expanded_hull_points[simplex] = points[simplex] + displacement
+        return expanded_hull_points
+
+    hull = ConvexHull(atoms[:, :2])
+    expanded_hull_points = expand_convex_hull(
+        atoms[:, :2], hull, expand_length)
+
+    # Create a Delaunay triangulation of the expanded hull points
+    delaunay = Delaunay(expanded_hull_points)
+
+    # Check if a point is inside the expanded convex hull
+    def is_inside_expanded_hull(point):
+        return delaunay.find_simplex(point) >= 0
+
+    # Translate Wannier centers back to the area defined by the expanded convex hull
+    for i, wannier in enumerate(wanniers):
+        for a, b, c in itertools.product(range(-1, 2), repeat=3):
+            translation = a * cell[0] + b * cell[1] + c * cell[2]
+            translated_wannier = wannier + translation
+            if is_inside_expanded_hull(translated_wannier[:2]) and translated_wannier[2] >= atoms[:, 2].min() - expand_length and translated_wannier[2] <= atoms[:, 2].max() + expand_length:
+                wanniers[i] = translated_wannier
+                break
 
     def draw_bond_segment(ax, x1, y1, x2, y2, linewidth, color, round_end):
-        line = plt.Line2D([x1, x2], [y1, y2], linewidth=linewidth, 
+        line = plt.Line2D([x1, x2], [y1, y2], linewidth=linewidth,
                           color=color, zorder=1,
                           solid_capstyle='round' if round_end else 'butt')
         ax.add_line(line)
@@ -1924,49 +2313,65 @@ def view_wannier_centers(path, save=True, plot_sum=False, index=False):
     for i in range(len(atoms)):
         for j in range(i+1, len(atoms)):
             d = np.linalg.norm(atoms[i] - atoms[j])
-            if d < 1.6:
+            if d < bond_cutoff:
                 x1, y1 = atoms[i, :2]
                 x2, y2 = atoms[j, :2]
 
                 if atom_elements[i] == atom_elements[j]:  # C-C bond
-                    draw_bond_segment(ax, x1, y1, x2, y2, linewidth=5, color=[0.33]*3, round_end=True)
+                    draw_bond_segment(ax, x1, y1, x2, y2, linewidth=5, color=[
+                                      0.36]*3, round_end=True)
                 else:  # C-H bond
                     mid_point = (atoms[i] + atoms[j]) / 2
-                    color1 = [0.33]*3 if atom_elements[i] == 'C' else [0.8]*3
-                    color2 = [0.33]*3 if atom_elements[j] == 'C' else [0.8]*3
+                    color1 = [0.36]*3 if atom_elements[i] == 'C' else [0.8]*3
+                    color2 = [0.36]*3 if atom_elements[j] == 'C' else [0.8]*3
                     round_end1 = atom_elements[i] == 'H'
                     round_end2 = atom_elements[j] == 'H'
-                    draw_bond_segment(ax, mid_point[0], mid_point[1], x2, y2, linewidth=5, color=color2, round_end=round_end2)
-                    draw_bond_segment(ax, x1, y1, mid_point[0], mid_point[1], linewidth=5, color=color1, round_end=False)
+                    draw_bond_segment(
+                        ax, mid_point[0], mid_point[1], x2, y2, linewidth=5, color=color2, round_end=round_end2)
+                    draw_bond_segment(
+                        ax, x1, y1, mid_point[0], mid_point[1], linewidth=5, color=color1, round_end=False)
 
     ax.scatter(wanniers[:, 0], wanniers[:, 1], color='red', s=100, zorder=2)
     if index:
         for i in range(len(wanniers)):
             x, y = wanniers[i, :2]
-            ax.text(x, y, str(i+1), fontsize=20, color='black', ha='center', va='center', zorder=3)
+            ax.text(x, y, str(i+1), fontsize=20, color='black',
+                    ha='center', va='center', zorder=3)
+
+    # Calculate the average position of the Wannier centers
+    wannier_sum = (wanniers - gcenter).sum(axis=0)
+    wannier_sum_frac = np.dot(wannier_sum, np.linalg.inv(cell))
+    print("Sum of Wannier centres (Relative to geometry center, absolute):\n\t",
+          [round(x, 4) for x in wannier_sum])
+    print("Sum of Wannier centres (Relative to geometry center, fractional):\n\t",
+          [round(x, 4) for x in wannier_sum_frac])
 
     if plot_sum:
-        # Calculate the average position of the Wannier centers
-        avg_wannier = np.mean(wanniers, axis=0)
         # Plot the average position with a blue diamond marker
-        ax.scatter(avg_wannier[0], avg_wannier[1], color='blue', marker='D', s=150, zorder=3, edgecolors='none', linewidths=1)
+        # convert relative to geometry center to absolute
+        wannier_sum += gcenter
+        ax.scatter(wannier_sum[0], wannier_sum[1], color='blue',
+                   marker='D', s=150, zorder=3, edgecolors='none', linewidths=1)
 
-    ax.set_xlim([atoms[:, 0].min()-1, atoms[:, 0].max()+1])
-    ax.set_ylim([atoms[:, 1].min()-1, atoms[:, 1].max()+1])
+    ax.set_xlim([atoms[:, 0].min()-2, atoms[:, 0].max()+2])
+    ax.set_ylim([atoms[:, 1].min()-0.5, atoms[:, 1].max()+0.5])
     ax.set_aspect('equal', 'box')
     ax.set_xlabel('x')
     ax.set_ylabel('y')
     plt.axis('off')
     if save:
-        svg_file = filepath.split('.')[0]+'.svg'
-        plt.savefig(svg_file, transparent=True, bbox_inches='tight', dpi=600)
+        # save all the formats defined in save_format
+        for fmt in save_format.split(','):
+            filepath = xyz_file.split('.')[0] + '.' + fmt
+            plt.savefig(filepath, transparent=True, bbox_inches='tight', dpi=300)
 
     plt.show()
 
 
 
+
 def chiral_phase_index(H, knpts=200, plot_phase=False,
-    Aidx=None, Bidx=None):
+                       Aidx=None, Bidx=None):
     """
     Calculate the chiral phase index defined in
         'Jingwei Jiang and Steven Louie, Nano Lett. 2021, 21, 1, 197–202'
@@ -2055,9 +2460,8 @@ def bs_under_electric_field(H, field, plot=True, **kwargs):
     g = h.geometry
     for i in range(len(h)):
         ymean = g.xyz.mean(axis=0)[1]
-        y = g.xyz[i,1] - ymean
-        h[i,i] = field*y
+        y = g.xyz[i, 1] - ymean
+        h[i, i] = field*y
     if plot:
         band_structure(h, **kwargs)
     return h
-
