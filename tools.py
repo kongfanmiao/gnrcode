@@ -139,8 +139,8 @@ def convert_formated_str_to_dict(s: str):
     """
     Convert the string of the following format to dictionary:
     Eg:
-        Input: 'C: pz; N: pxy'
-        Output: {'C': ['pz'],
+        Input: 'C: pz,pz; N: pxy'
+        Output: {'C': ['pxy','pz'],
                  'N': ['pxy']}
     """
     sl = s.split(";")
@@ -152,6 +152,26 @@ def convert_formated_str_to_dict(s: str):
         value = [i.strip() for i in v]
         d[key] = value
     return d
+
+
+def convert_dict_to_formatted_str(d: dict) -> str:
+    """
+    Convert the dictionary to a string in the following format:
+    Eg:
+        Input: {'C': ['pxy','pz'],
+                'N': ['pxy']}
+        Output: 'C: pxy,pz; N: pxy'
+    """
+    formatted_str_list = []
+
+    for key, values in d.items():
+        values_str = ', '.join(values)
+        formatted_str_list.append(f"{key}: {values_str}")
+
+    formatted_str = '; '.join(formatted_str_list)
+
+    return formatted_str
+
 
 
 def list_str(l):
