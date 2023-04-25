@@ -3,9 +3,9 @@ import itertools
 import os
 import re
 import regex
-from matplotlib import lines
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import lines
 import xarray
 from sisl import BandStructure, Hamiltonian, MonkhorstPack, Grid
 from sisl.physics import electron, gaussian
@@ -22,6 +22,9 @@ from typing import List, Tuple, Union, Dict
 
 import logging
 logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
+
+import matplotlib
+matplotlib.rcParams['svg.fonttype'] = 'none'
 
 
 kpoints_dict = {
@@ -133,8 +136,8 @@ def band_structure(
     knpts=200,
     spin_polarized=False,
     legend_position=[1.1, 0.9],
-    ticks_font=14,
-    label_font=14,
+    ticks_fontsize=14,
+    label_fontsize=14,
     border_linewidth=1.5,
     linewidth=1,
     save=False,
@@ -221,9 +224,9 @@ def band_structure(
     plt.xticks(kt, kl)
     plt.ylim(Erange[0], Erange[-1])
     plt.xlim(0, lk[-1])
-    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_font)
-    plt.tick_params(axis='x', labelsize=ticks_font)
-    plt.tick_params(axis='y', labelsize=ticks_font)
+    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
+    plt.tick_params(axis='x', labelsize=ticks_fontsize)
+    plt.tick_params(axis='y', labelsize=ticks_fontsize)
 
     # iterate spin
     for i, e in enumerate(eigh):
@@ -293,8 +296,8 @@ def plot_bands(name, path,
                figsize=[6, 4],
                index=False,
                ticklabels=None,
-               ticks_font=14,
-               label_font=14,
+               ticks_fontsize=14,
+               label_fontsize=14,
                border_linewidth=1.5,
                linewidth=1,
                save=False,
@@ -323,11 +326,11 @@ def plot_bands(name, path,
         plt.ylim(emin, emax)
     else:
         emin, emax = -1e2, 1e6
-    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_font)
+    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
     plt.xticks(bands.ticks, bands.ticklabels)
     plt.xlim([min(bands.ticks), max(bands.ticks)])
-    plt.tick_params(axis='x', labelsize=ticks_font)
-    plt.tick_params(axis='y', labelsize=ticks_font)
+    plt.tick_params(axis='x', labelsize=ticks_fontsize)
+    plt.tick_params(axis='y', labelsize=ticks_fontsize)
     # plot the data
     for i in range(bands.shape[2]):  # iterate bands
         band = bands[:, :, i]
@@ -391,8 +394,8 @@ def interpolated_bs(
     overlap=False,
     knpts_int=30,
     knpts_pr=200,
-    ticks_font=14,
-    label_font=14,
+    ticks_fontsize=14,
+    label_fontsize=14,
     border_linewidth=1.5,
     linewidth=1,
     marker_size=30,
@@ -419,8 +422,8 @@ def interpolated_bs(
         overlap: whether to overlap the pristine and interpolated band structures
         knpts_int: number of k-points for the interpolated band structure   
         knpts_pr: number of k-points for the pristine band structure
-        ticks_font: font size of the ticks
-        label_font: font size of the labels
+        ticks_fontsize: font size of the ticks
+        label_fontsize: font size of the labels
         border_linewidth: linewidth of the border
         linewidth: linewidth of the band structure
         marker_size: size of the marker
@@ -477,9 +480,9 @@ def interpolated_bs(
 
     lk_int, kt, kl = bs_int.lineark(ticks=True)
     plt.figure(figsize=figsize)
-    plt.xticks(kt, kl, fontsize=label_font)
+    plt.xticks(kt, kl, fontsize=label_fontsize)
     plt.ylim(Erange[0], Erange[-1])
-    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_font)
+    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
 
     if overlap:
         for i, ek_pr in enumerate(eig_pr.T):
@@ -498,8 +501,8 @@ def interpolated_bs(
         for i, ek_int in enumerate(eig_int.T):
             plt.plot(lk_int, ek_int, **kwargs)
         plt.xlim(0, lk_int[-1])
-    plt.tick_params(axis='x', labelsize=ticks_font)
-    plt.tick_params(axis='y', labelsize=ticks_font)
+    plt.tick_params(axis='x', labelsize=ticks_fontsize)
+    plt.tick_params(axis='y', labelsize=ticks_fontsize)
     # set the linewidth of the border
     for axis in ['top', 'bottom', 'left', 'right']:
         plt.gca().spines[axis].set_linewidth(border_linewidth)
@@ -693,8 +696,9 @@ def energy_levels(
     Erange=[-3, 3],
     figsize=(1, 5),
     index=False,
-    color="darkslategrey",
+    color="k",
     fermi_energy=0.0,
+    show=True,
     **kwargs,
 ):
     """
@@ -712,7 +716,8 @@ def energy_levels(
         which = np.where(np.logical_and(eig < Erange[-1], eig > Erange[0]))[0]
         for i in which:
             plt.text(1.2, eig[i], str(i))
-    plt.show()
+    if show:
+        plt.show()
 
 
 @timer
@@ -726,10 +731,12 @@ def dos(
     dE=0.01,
     ret=False,
     color="k",
-    mpgrid=[30, 1, 1],
+    mpgrid=[50, 1, 1],
     gaussian_broadening=0.02,
     linewidth=1,
     border_linewidth=1.5,
+    ticks_fontsize=14,
+    label_fontsize=14,
     save=False,
     save_path='.',
     save_format='png,svg',
@@ -789,13 +796,13 @@ def dos(
     plt.xlim(0, sel_dos.max()*1.1)
     plt.xticks([])
     plt.plot(sel_dos, sel_E, color=color, linewidth=linewidth, **kwargs)
-    plt.ylabel(r'$\rm E-E_F$ (eV)')
-    plt.xlabel("DOS (arb. u.)")
-
+    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
+    plt.xlabel("DOS (arb. u.)", fontsize=label_fontsize)
+    plt.gca().tick_params(axis='both', which='major', labelsize=ticks_fontsize)
     # set border linewidth
     for spine in plt.gca().spines.values():
         spine.set_linewidth(border_linewidth)
-
+    
     if save:
         for fmt in save_format.split(','):
             filename = os.path.join(save_path, 
@@ -816,17 +823,32 @@ def pdos(
     figsize=(4, 6),
     dE=0.01,
     gaussian_broadening=0.02,
-    mpgrid=[30, 1, 1],
+    mpgrid=[50, 1, 1],
     projected_atoms="all",
     projected_orbitals=["s", "pxy", "pz"],
     specify_atoms_and_orbitals=None,
     legend_position=[1.1, 0.9],
+    colors:list=None,
+    linewidth=1,
+    border_linewidth=1.5,
+    ticks_fontsize=14,
+    label_fontsize=14,
+    save=False,
+    save_name='tmp',
+    save_path='.',
+    save_format='png,svg',
+    max_pdos=None,
+    **kwargs
 ):
     """
     Projected density of states
     by default plot selected projected orbitals for all the atom specie
     Arguments:
+        H: Hamiltonian
+        name: name of the system
+        path: path to the directory where the pdos file is stored
         Erange: Energy range to plot.
+        figsize: figure size
         dE: Energy mesh size.
         gaussian_broadening: gaussian broadening parameter
         mpgrid: Monkhorst-Pack grid
@@ -838,6 +860,18 @@ def pdos(
             projected_orbitals arguments. If not, the projected orbitals will
             be all the orbitals in projected_orbitals of each atoms in
             projected_atoms.
+        legend_position: position of the legend
+        colors: colors of the projected orbitals
+        linewidth: linewidth of the pdos
+        border_linewidth: linewidth of the border
+        ticks_fontsize: font size of the ticks
+        label_fontsize: font size of the labels
+        save: whether to save the figure
+        save_name: name of the figure
+        save_path: path to save the figure
+        save_format: format of the figure
+        max_pdos: maximum value of the pdos, to be used to set the xlim. This is
+            useful when the pdos x range is to be consistent with other pdos.
     """
     # Firstly try to read pdos from file
     # The following part is similar to dos
@@ -940,13 +974,17 @@ def pdos(
     else:
         proj_ats_orbs = convert_formated_str_to_dict(
             specify_atoms_and_orbitals)
-    print(proj_ats_orbs)
 
     plt.figure(figsize=figsize)
-    plt.ylabel("$E - E_F$ (eV)")
-    plt.xlabel("PDOS ($eV^{-1}$)")
+    plt.ylabel("$E - E_F$ (eV)", fontsize=label_fontsize)
+    plt.xlabel("PDOS (arb. u.)", fontsize=label_fontsize)
     ia = 0  # index of atoms, for line styles
     pdosmax = 0  # max of pdos
+    iline = 0  # index of line styles
+
+    if colors:
+        color_gen = itertools.cycle(colors)
+
     for a, pd_a in pdos_dict.items():
         io = 0  # index of orbitals, for colors
         # choose atoms
@@ -968,26 +1006,52 @@ def pdos(
                 select_range = np.logical_and(E >= Erange[0], E <= Erange[-1])
                 sel_pd = pd[select_range]
                 sel_E = E[select_range]
+                if colors:
+                    c = next(color_gen)
+                else:
+                    c = color_list[io]
                 plt.plot(
                     sel_pd,
                     sel_E,
-                    color=color_list[io],
+                    color=c,
                     label=label,
-                    linestyle=linestyle_list[ia],
+                    linestyle=linestyle_list[iline],
+                    linewidth=linewidth,
+                    **kwargs
                 )
                 pdmax = sel_pd.max()
                 pdosmax = pdmax if pdmax > pdosmax else pdosmax
             io += 1
+        iline += 1
         ia += 1
     plt.ylim(Erange[0], Erange[-1])
-    plt.xlim(0, pdosmax + 0.5)
+    plt.xlim(0, pdosmax*1.02)
+    if max_pdos:
+        plt.xlim(0, max_pdos*1.02)
+    plt.xticks([])
     lgd = plt.legend(bbox_to_anchor=legend_position)
     lgd.get_frame().set_alpha(0)
+    plt.tick_params(axis='x', labelsize=ticks_fontsize)
+    plt.tick_params(axis='y', labelsize=ticks_fontsize)
+    for border in ["left", "bottom", "top", "right"]:
+        plt.gca().spines[border].set_linewidth(border_linewidth)
+
+    if save:
+        for fmt in save_format.split(','):
+            projs_dict = convert_dict_to_formatted_str(proj_ats_orbs)
+            projs = projs_dict.replace(',','-').replace(':','-')
+            plt.savefig(
+                os.path.join(save_path, 
+                f'{save_name}.PDOS.{projs}.E{Erange[0]}to{Erange[1]}.{fmt}'),
+                bbox_inches='tight',
+                dpi=300, transparent=True)
+    plt.show()
+    return pdosmax
 
 
 @timer
 def pzdos(
-    H, Erange=[-10, 20], mpgrid=[30, 1, 1], gaussian_broadening=0.05, plot_pzdos=True
+    H, Erange=[-10, 20], mpgrid=[50, 1, 1], gaussian_broadening=0.05, plot_pzdos=True
 ):
 
     mp = MonkhorstPack(H, mpgrid)
@@ -1057,7 +1121,7 @@ def fat_bands(
     alpha=1.0,
     fat_scale = 1,
     tick_fontsize=14,
-    label_fontsize=14,
+    label_fontsizesize=14,
     legend_fontsize=12,
     linewidth=1,
     border_linewidth=1.5,
@@ -1065,7 +1129,8 @@ def fat_bands(
     save_name=None,
     save_format='png,svg',
     save_path='.',
-    show=True
+    show=True,
+    colors:list=None
 ):
     """
     Plot the fat bands, showing the weight of each kinds of orbital of every band.
@@ -1098,12 +1163,14 @@ def fat_bands(
         alpha: the transparency of the fat bands.
         fat_scale: defines how fat the bands are.
         tick_fontsize: the fontsize of the ticks.
-        label_fontsize: the fontsize of the labels.
+        label_fontsizesize: the fontsize of the labels.
         legend_fontsize: the fontsize of the legend.
         save: whether to save the figure.
         save_name: the name of the saved figure.
         save_format: the format of the saved figure.
         save_path: the path to save the figure.
+        show: whether to show the figure.
+        colors: the colors of the fat bands.
     """
 
     # Position of ticks in Brillouin zone
@@ -1215,27 +1282,31 @@ def fat_bands(
             figsize=figsize_new,
             gridspec_kw={"wspace": 0},
         )
-        axes[0].set_ylabel(r"$\rm E-E_F$ (eV)", fontsize=label_fontsize)
+        axes[0].set_ylabel(r"$\rm E-E_F$ (eV)", fontsize=label_fontsizesize)
         axes[0].set_ylim(Emin, Emax)
         axes[0].set_xticks(k_tick)
-        axes[0].set_xticklabels(k_label, fontsize=label_fontsize)
+        axes[0].set_xticklabels(k_label, fontsize=label_fontsizesize)
         for i in range(na - 1):
             axes[i + 1].set_xticks([])
     else:
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot()
-        ax.set_ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
+        ax.set_ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsizesize)
         ax.set_xlim(linear_k[0], linear_k[-1])
         ax.set_xticks(k_tick)
-        ax.set_xticklabels(k_label, fontsize=label_fontsize)
+        ax.set_xticklabels(k_label, fontsize=label_fontsizesize)
         ax.set_ylim(Emin, Emax)
 
     legend_dict = {}
     # ib is the band index
+    if colors:
+        # prepare a generator for colors
+        color_gen = itertools.cycle(colors)
     for ib, e in enumerate(eig.T):
         # if the band has any segments that are in the selected energy range
         if np.any(np.logical_and(e < Emax, e > Emin)):
             filled_range = np.array([e, e])
+            # plot the bands themselves first
             if split_view:
                 for iax in range(na):
                     if not np.any(np.logical_and(e < Emax, e > Emin)):
@@ -1265,10 +1336,6 @@ def fat_bands(
                 for orb, wt_o in wt_a.items():
                     # wt_o is a list
                     if len(wt_o) != 0:
-                        # if the orbital of this atom is chosen to
-                        # be projected, then alpha is alpha, if not,
-                        # alpha is set to zero and it won't be put in
-                        # the legend dictionary
                         if orb in proj_ats_orbs[a]:
                             alp = alpha
                             # define the legend patch
@@ -1279,42 +1346,52 @@ def fat_bands(
                             else:
                                 label = f"{a}: ${orb}$"
                             legend_dict.update({label: (ia, io)})
-                        else:
-                            alp = 0.0
-                        # the wt_o array changes k along column, while changes band
-                        # index along row.
-                        weight = np.abs(wt_o[:, ib] * dE)
-                        c = color_list[io][ia]
-                        if split_view:
-                            ax = axes[ifig]
-                            ax.set_ylim(Emin, Emax)
-                            ax.set_title(a)
-                            ax.set_xlim(linear_k[0], linear_k[-1])
-                        ax.fill_between(
-                            linear_k,
-                            filled_range[0] - weight,
-                            filled_range[0],
-                            color=c,
-                            alpha=alp,
-                        )
-                        ax.fill_between(
-                            linear_k,
-                            filled_range[1],
-                            filled_range[1] + weight,
-                            color=c,
-                            alpha=alp,
-                        )
-                        # update the "already filled range"
-                        filled_range = filled_range + \
-                            np.array([-weight, weight])
+
+                            # the wt_o array changes k along column, while changes band
+                            # index along row.
+                            weight = np.abs(wt_o[:, ib] * dE)
+                            if colors:
+                                c = next(color_gen)
+                            else:
+                                c = color_list[io][ia]
+                            if split_view:
+                                ax = axes[ifig]
+                                ax.set_ylim(Emin, Emax)
+                                ax.set_title(a)
+                                ax.set_xlim(linear_k[0], linear_k[-1])
+                            ax.fill_between(
+                                linear_k,
+                                filled_range[0] - weight,
+                                filled_range[0],
+                                color=c,
+                                alpha=alp,
+                            )
+                            ax.fill_between(
+                                linear_k,
+                                filled_range[1],
+                                filled_range[1] + weight,
+                                color=c,
+                                alpha=alp,
+                            )
+                            # update the "already filled range"
+                            filled_range = filled_range + \
+                                np.array([-weight, weight])
                     io += 1
                 ifig += 1
                 ia += 1
 
-    legend_elements = [
-        Patch(facecolor=color_list[idx[1]][idx[0]], label=label)
+    # restart the color generator
+    if colors:
+        color_gen = itertools.cycle(colors)
+        legend_elements = [
+        Patch(facecolor=next(color_gen), label=label)
         for label, idx in legend_dict.items()
     ]
+    else:
+        legend_elements = [
+            Patch(facecolor=color_list[idx[1]][idx[0]], label=label)
+            for label, idx in legend_dict.items()
+        ]
     lgd = plt.legend(handles=legend_elements, bbox_to_anchor=legend_position,
                fontsize=legend_fontsize)
     lgd.get_frame().set_alpha(0)
@@ -1325,7 +1402,8 @@ def fat_bands(
         plt.gca().spines[axis].set_linewidth(border_linewidth)
     if save:
         for fmt in save_format.split(','):
-            projs = specify_atoms_and_orbitals.replace(',','-').replace(':','-')
+            projs_dict = convert_dict_to_formatted_str(proj_ats_orbs)
+            projs = projs_dict.replace(',','-').replace(':','-')
             plt.savefig(
                 os.path.join(save_path, 
                 f'{save_name}.FatBands.{projs}.{tick_labels}.E{Emin}to{Emax}.{fmt}'),
@@ -1333,6 +1411,7 @@ def fat_bands(
                 dpi=300, transparent=True)
     if show:
         plt.show()
+
 
 
 @timer
@@ -1366,8 +1445,8 @@ def plot_eigst_band(
 
     es = H.eigenstate(k=_k)
     eig = H.eigh(k=_k)
-    # num_occ = len(eig[eig < fermi_energy])
-    num_occ = len(H)//2
+    num_occ = len(eig[eig < fermi_energy])
+    # num_occ = len(H)//2
 
     band = num_occ-1+offset
     # print the index of the plotted energy level relative to HOMO and LUMO
@@ -1623,6 +1702,7 @@ def ldos(H,
     if ret:
         return X, Y
 
+
 @timer
 def cell_ldos(g:Geometry=None, 
               repetitions:int=None, 
@@ -1635,6 +1715,8 @@ def cell_ldos(g:Geometry=None,
               gaussian_broadening=0.05, 
               linewidth=1, 
               border_linewidth=1.5,
+              ticks_fontsize=14,
+              label_fontsize=14,
               plot_geom=True, 
               save=False, 
               save_name='tmp',
@@ -1653,6 +1735,8 @@ def cell_ldos(g:Geometry=None,
         gaussian_broadening: gaussian broadening
         linewidth: linewidth of the plot
         border_linewidth: linewidth of the border of the plot
+        ticks_fontsize: fontsize of the ticks
+        label_fontsize: fontsize of the label
         plot_geom: plot the geometry or not
         save: save the plot or not
         save_name: name of the saved file
@@ -1722,9 +1806,7 @@ def cell_ldos(g:Geometry=None,
                             gaussian_broadening=gaussian_broadening,
                             plot=False, ret=True)
     x_end -= fermi_energy
-    x_bulk -= fermi_energy
-    print(x_end[0], x_end[-1])
-    
+    x_bulk -= fermi_energy    
     
     # Plot the LDOS of the end cell and the bulk cell
     if not vertical_plot:
@@ -1733,9 +1815,9 @@ def cell_ldos(g:Geometry=None,
                  linewidth=linewidth, **kwargs)
         ax2.plot(x_bulk, y_bulk.sum(axis=1), label='Bulk cell', color='magenta',
                  linewidth=linewidth, **kwargs)
-        ax2.set_xlabel(r'$\rm E-E_F$ (eV)')
+        ax2.set_xlabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
         ax2.set_xlim(Erange[0], Erange[1])
-        ax2.set_ylabel('LDOS (arb. u.)')
+        ax2.set_ylabel('LDOS (arb. u.)', fontsize=label_fontsize)
         ax2.set_ylim(0, None)
         ax2.set_yticks([])
     else:
@@ -1744,9 +1826,9 @@ def cell_ldos(g:Geometry=None,
                  linewidth=linewidth, **kwargs)
         ax2.plot(y_bulk.sum(axis=1), x_bulk, label='Bulk cell', color='magenta',
                  linewidth=linewidth, **kwargs)
-        ax2.set_ylabel(r'$\rm E-E_F$ (eV)')
+        ax2.set_ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
         ax2.set_ylim(Erange[0], Erange[1])
-        ax2.set_xlabel('LDOS (arb. u.)')
+        ax2.set_xlabel('LDOS (arb. u.)', fontsize=label_fontsize)
         ax2.set_xlim(0, None)
         ax2.set_xticks([])
 
@@ -1756,6 +1838,8 @@ def cell_ldos(g:Geometry=None,
     # set the borader linewidth
     for axis in ['top', 'bottom', 'left', 'right']:
         ax2.spines[axis].set_linewidth(border_linewidth)
+    plt.tick_params(axis='x', labelsize=ticks_fontsize)
+    plt.tick_params(axis='y', labelsize=ticks_fontsize)
 
     if save:
         for fmt in save_format.split(','):
@@ -1768,7 +1852,7 @@ def cell_ldos(g:Geometry=None,
             fig2.savefig(os.path.join(save_path, ldos_file), dpi=300,
                          bbox_inches='tight', transparent=True)
     plt.show()
-  
+   
 
 
 @timer
@@ -2453,6 +2537,7 @@ def chiral_phase_index(H, knpts=200, plot_phase=False,
         plt.axis('equal')
 
     return Z
+
 
 
 def bs_under_electric_field(H, field, plot=True, **kwargs):
