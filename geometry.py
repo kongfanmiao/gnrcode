@@ -13,6 +13,8 @@ from matplotlib.colors import LinearSegmentedColormap
 
 from .tools import deprecated, timer
 
+mpl.rcParams['svg.fonttype'] = 'none'
+
 
 def get_molecule_size(g: Geometry):
     """
@@ -247,6 +249,8 @@ def guess_figsize(g):
 def display2D(g, aid=False, sc=True, rotate=False, figsize=None,
               text_color='green', text_font_size=16, **kwargs):
 
+    tmp_c = mpl.rcParams['text.color']
+    tmp_f = mpl.rcParams['font.size']
     mpl.rcParams['text.color'] = text_color
     mpl.rcParams['font.size'] = text_font_size
 
@@ -265,7 +269,9 @@ def display2D(g, aid=False, sc=True, rotate=False, figsize=None,
     #     plt.xlim(minxyz[0] - 6, maxxyz[0] + 6)
     # else:
     #     plt.ylim(minxyz[1] - 2, maxxyz[1] + 2)
-    mpl.rcParams.update(mpl.rcParamsDefault)
+    # recover to default settings
+    mpl.rcParams['text.color'] = tmp_c
+    mpl.rcParams['font.size'] = tmp_f
     plt.show()
 
 
