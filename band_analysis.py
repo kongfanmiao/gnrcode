@@ -144,6 +144,7 @@ def band_structure(
     save_name='tmp',
     save_path='./',
     save_format='png,svg',
+    show=True,
     **kwargs,
 ):
     """
@@ -261,7 +262,8 @@ def band_structure(
                 f'{save_name}.BandStructure.{model}.{tick_labels}.E{Erange[0]}to{Erange[-1]}.{f}')
             plt.savefig(filename, bbox_inches='tight',
                         dpi=300, transparent=True)
-    plt.show()
+    if show:
+        plt.show()
 
 
 def read_bands(
