@@ -124,15 +124,19 @@ def plot_phonon_bands(
     path="./phonon",
     Erange=None,
     figsize=(8, 6),
-    ticks_font=12,
-    label_font=12,
+    ticks_fontsize=14,
+    label_fontsize=14,
     title=False,
-    title_font=14,
-    border_line_width=2,
+    title_fontsize=14,
+    border_line_width=1.5,
+    linewidth=1,
     save=False,
-    save_format="png",
+    save_format="png,svg",
+    save_path='.',
+    save_name='tmp',
     dpi=300,
     ax2=True,
+    index=False,
     **kwargs,
 ):
     """
@@ -142,7 +146,7 @@ def plot_phonon_bands(
         path: path to read and write files
         Erange: energy range to plot the dispersion
         figsize: figure size
-        ticks_font, label_font, title_font, border_line_width: arguments for figure
+        ticks_fontsize, label_fontsize, title_fontsize, border_line_width: arguments for figure
         save, save_format, dpi: arguments for saving figure
         ax2: plot right axis in frequency (cm^-1) unit or not
     """
@@ -161,17 +165,17 @@ def plot_phonon_bands(
         ax1.set_ylim(emin, emax)
     else:
         emin, emax = -1e2, 1e6
-    ax1.set_ylabel("Energy (meV)", fontsize=label_font)
+    ax1.set_ylabel("Energy (meV)", fontsize=label_fontsize)
     ax1.set_xticks(bands.ticks)
     ax1.set_xticklabels(bands.ticklabels)
     ax1.set_xlim([min(bands.ticks), max(bands.ticks)])
-    ax1.tick_params(axis='x', labelsize=ticks_font)
-    ax1.tick_params(axis='y', labelsize=ticks_font)
+    ax1.tick_params(axis='x', labelsize=ticks_fontsize)
+    ax1.tick_params(axis='y', labelsize=ticks_fontsize)
 
     # optional ax2 is in frequency (cm^-1) scale
     if ax2:
         ax2 = ax1.twinx()
-        ax2.set_ylabel("Frequency ($cm^{-1}$)", fontsize=label_font)
+        ax2.set_ylabel("Frequency ($cm^{-1}$)", fontsize=label_fontsize)
         ax2.set_ylim(np.array(ax1.get_ylim()) * 8.066)
 
     # plot the data
@@ -179,10 +183,12 @@ def plot_phonon_bands(
         band = bands[:, i] / 8.066
         # select the bands that are in the given energy window
         if np.any(np.logical_and(band > emin, band < emax)):
-            ax1.plot(ks, band, color="k", **kwargs)
+            ax1.plot(ks, band, color="k", linewidth=linewidth, **kwargs)
+            if index:
+                ax1.annotate(i+1, [ks[-1], band[-1]])
     if title:
         fig_title = "{}_PhononDispersion".format(name)
-        ax1.set_title(fig_title + "\n", fontsize=title_font)
+        ax1.set_title(fig_title + "\n", fontsize=title_fontsize)
 
     # set border width
     for border in ["left", "bottom", "top", "right"]:
@@ -191,9 +197,12 @@ def plot_phonon_bands(
     # save the figure
     if save:
         enrg_str = "{}to{}meV".format(emin, emax) if Erange else "full_range"
-        fig_name = name + "_PhononDispersion_" + enrg_str
-        fig_path = os.path.join(path, fig_name + "." + save_format)
-        fig.savefig(fig_path, dpi=dpi)
+        fig_name = save_name + ".PhononDispersion." + enrg_str
+        for fmt in save_format.split(","):
+            fig_path = os.path.join(save_path, fig_name + "." + fmt)
+            fig.savefig(fig_path, dpi=dpi, transparent=True, bbox_inches="tight")
+        
+    plt.show()
 
 
 
@@ -439,9 +448,9 @@ def fat_phonon_bands(
     line_opacity=0.0,
     marker_size=50,
     cmap="inferno_r",
-    ticks_font=12,
-    label_font=12,
-    title_font=14,
+    ticks_fontsize=12,
+    label_fontsize=12,
+    title_fontsize=14,
     border_line_width=2,
     save=False,
     save_format="png",
@@ -462,7 +471,7 @@ def fat_phonon_bands(
         line_opacity: opacity of the original dispersion lines
         marker_size: size of the markers of fat bands
         cmap: color map
-        ticks_font, label_font, title_font, border_line_width: arguments for figure
+        ticks_fontsize, label_fontsize, title_fontsize, border_line_width: arguments for figure
         save: save figures or not
         save_format: format of the figuer to be saved, usually png, or pdf
         dpi: dots per inch
@@ -474,7 +483,7 @@ def fat_phonon_bands(
                               as_dataarray=True, squeeze=True)
     # read all the phonon vectors
     ph_kpts, ph_enrgs, ph_vectors = read_phonon_vectors(
-        geom=geom, name=name, path=path, first_band=first_band, last_band=last_band
+        name=name, path=path, first_band=first_band, last_band=last_band
     )
     # Convert k points to one dimension, as we are mainly dealing with one
     # dimensional system
@@ -493,13 +502,13 @@ def fat_phonon_bands(
         ax1.set_ylim(emin, emax)
     else:
         emin, emax = -1e2, 1e6
-    ax1.set_ylabel("Energy (meV)", fontsize=label_font)
+    ax1.set_ylabel("Energy (meV)", fontsize=label_fontsize)
     ax1.set_xticks(bands.ticks)
-    ax1.set_xticklabels(bands.ticklabels, fontsize=ticks_font)
+    ax1.set_xticklabels(bands.ticklabels, fontsize=ticks_fontsize)
     ax1.set_xlim(bands.ticks)
     if ax2:
         ax2 = ax1.twinx()
-        ax2.set_ylabel("Frequency ($cm^{-1}$)", fontsize=label_font)
+        ax2.set_ylabel("Frequency ($cm^{-1}$)", fontsize=label_fontsize)
         ax2.set_ylim(np.array(ax1.get_ylim()) * 8.066)
 
     # plot the data
@@ -516,7 +525,7 @@ def fat_phonon_bands(
 
     fat_disp.set_clim(0.0, 1.0)
     fig_title = "Fat Phonon Dispersion for {}".format(label)
-    ax1.set_title(fig_title + "\n", fontsize=title_font)
+    ax1.set_title(fig_title + "\n", fontsize=title_fontsize)
 
     # set border width
     for border in ["left", "bottom", "top", "right"]:
