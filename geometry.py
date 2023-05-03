@@ -664,3 +664,13 @@ def add_hydrogen(g:Geometry, index:int, direction:Union[list, np.ndarray]):
     g = connect(g, g1, index, 0, bond_vector)
         
     return g
+
+
+
+def get_size(g):
+    # get size of the geometry g, in three directions, 
+    # by calcualting max and min or xyz
+    x = g.xyz[:,0]
+    y = g.xyz[:,1]
+    z = g.xyz[:,2]
+    return np.array([max(x)-min(x), max(y)-min(y), max(z)-min(z)])
