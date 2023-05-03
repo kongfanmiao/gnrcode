@@ -7,3 +7,4 @@ for input in "${@:2}"; do
     convert $input -flatten -transparent white $input
 done
 convert $1 ${@:2} -layers flatten -background none allWannierFunctions.png
+convert allWannierFunctions.png -flatten -transparent black allWannierFunctions.png
