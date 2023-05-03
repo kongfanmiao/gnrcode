@@ -227,18 +227,18 @@ def read_calc_time(name, path, which=None):
             lines = f.read()
         numCores = int(re.search('Number of nodes\s*=\s*(\d+)', lines).group(1))
         wallTime = float(re.search('Total elapsed wall-clock time.+=\s+(.+)', lines).group(1))
-        CPUtime = float(re.search('Tot:  Sum, Avge,.+=\s+([\d\.]+)\s+', lines).group(1))
+        CPUtime = float(re.search('Tot:  Sum, Avge,.+=([\d\.]+)\s+', lines).group(1))
     except:
-        fout = glob(os.path.join(path,'*.out'))[0]
+        fout = glob(os.path.join(path,f'{name}*.out'))[0]
         with open(fout) as f:
             lines = f.read()
         tStart = re.search('Start of run:\s*(\d+\-\w+\-\d{4}\s*\d+:\d+:\d+)\n', lines).group(1)
         tEnd = re.search('End of run:\s*(\d+\-\w+\-\d{4}\s*\d+:\d+:\d+)\n', lines).group(1)
-        tStart = datetime.strptime(tStart, '%d-%b-%Y %H:%M:%S')
-        tEnd = datetime.strptime(tEnd, '%d-%b-%Y %H:%M:%S')
+        tStart = datetime.datetime.strptime(tStart, '%d-%b-%Y %H:%M:%S')
+        tEnd = datetime.datetime.strptime(tEnd, '%d-%b-%Y %H:%M:%S')
         wallTime = (tEnd - tStart).total_seconds()
         CPUtime = wallTime
-        numCores = 1
+        numCores = re.search('Running on\s*(\d+)\s+nodes in parallel', lines).group(1)
     if not which:
         wallTime = str(datetime.timedelta(seconds=wallTime))
         CPUtime = str(datetime.timedelta(seconds=CPUtime))
@@ -256,6 +256,9 @@ def read_calc_time(name, path, which=None):
     else:
         raise ValueError("which must be None, or one of ['cores', 'walltime',\
             'cputime', 'all']")
+
+
+
 
 
 
@@ -434,4 +437,21 @@ def modify_wann_centres_file(path, n, translation_vector):
     with open(centres_file, "w") as file:
         file.writelines(lines)
 
+
+
+def read_orca_final_energy(name, path):
+    last_energy = None
+
+    with open(os.path.join(path,f'{name}.out'), 'r') as file:
+        for line in file:
+            if "FINAL SINGLE POINT ENERGY" in line:
+                # Extract the float value
+                last_energy = line.split()[-1]
+
+    last_energy = float(last_energy.split()[-1])
+    last_energy *= 27.211386245988 # convert from Hartree to eV
+    if last_energy is not None:
+        return last_energy
+    else:
+        print("No 'FINAL SINGLE POINT ENERGY' line found in the file.")
 
