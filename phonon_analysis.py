@@ -222,6 +222,8 @@ def write_phonon_vector_xsf(
         path: path to read and write files
         num_of_cells: number of unit cells to write
     """
+    masses = get_masses([a.symbol for a in geo.atoms])
+
     coord = geo.xyz
     # lattice vector
     cell = geo.cell
@@ -254,6 +256,7 @@ def write_phonon_vector_xsf(
     for i, ib in enumerate(sub_bands):
         energy = enrgs[i_q, i]
         phvec = vectors[i_q, i, :, :]
+        phvec /= np.sqrt(masses[:, None])  # Unweight the vectors
         # vector times e^(ikR)
         _phase = np.exp(1j*R*_q)
         newPhVec = np.multiply(phvec, _phase)
@@ -284,6 +287,7 @@ def write_phonon_vector_xsf(
 
 
 
+
 def write_phonon_vector_axsf(
     geo, name, path, 
     Emin: float, 
@@ -298,6 +302,8 @@ def write_phonon_vector_axsf(
         path: path to read and write files
         num_of_cells: number of unit cells to write
     """
+    masses = get_masses([a.symbol for a in geo.atoms])
+
     coord = geo.xyz
     # lattice vector
     cell = geo.cell
@@ -344,6 +350,7 @@ def write_phonon_vector_axsf(
 
         for i, ib in enumerate(sub_bands):
             phvec = vectors[i_q, i, :, :]
+            phvec /= np.sqrt(masses[:, None])  # Unweight the vectors
             # vector times e^(ikR)
             _phase = np.exp(1j*R*_q)
             newPhVec = np.multiply(phvec, _phase)
@@ -372,6 +379,8 @@ def write_phonon_movie(geo, name, path,
         steps: number of animation steps
         num_of_cells: number of unit cells to plot
     """
+    masses = get_masses([a.symbol for a in geo.atoms])
+    
     coord = geo.xyz
     # lattice vector
     cell = geo.cell
@@ -407,6 +416,7 @@ def write_phonon_movie(geo, name, path,
         axsf_file = "{}_K{:.2f}_B{}_{:.2f}meV.axsf".format(
             name, q[0], ib+1, energy)
         phvec = vectors[i_q, i, :, :]
+        phvec /= np.sqrt(masses[:, None])  # Unweight the vectors
         # vector times e^(ikR)
         _phase = np.exp(1j*R*_q)
         newPhVec = np.multiply(phvec, _phase)

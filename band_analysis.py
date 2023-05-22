@@ -23,8 +23,6 @@ from typing import List, Tuple, Union, Dict
 import logging
 logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
 
-import matplotlib
-matplotlib.rcParams['svg.fonttype'] = 'none'
 
 
 kpoints_dict = {
@@ -225,7 +223,7 @@ def band_structure(
     plt.xticks(kt, kl)
     plt.ylim(Erange[0], Erange[-1])
     plt.xlim(0, lk[-1])
-    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
+    plt.ylabel('$E-E_\mathrm{F}$ (eV)', fontsize=label_fontsize)
     plt.tick_params(axis='x', labelsize=ticks_fontsize)
     plt.tick_params(axis='y', labelsize=ticks_fontsize)
 
@@ -328,7 +326,7 @@ def plot_bands(name, path,
         plt.ylim(emin, emax)
     else:
         emin, emax = -1e2, 1e6
-    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
+    plt.ylabel('$E-E_\mathrm{F}$ (eV)', fontsize=label_fontsize)
     plt.xticks(bands.ticks, bands.ticklabels)
     plt.xlim([min(bands.ticks), max(bands.ticks)])
     plt.tick_params(axis='x', labelsize=ticks_fontsize)
@@ -484,7 +482,7 @@ def interpolated_bs(
     plt.figure(figsize=figsize)
     plt.xticks(kt, kl, fontsize=label_fontsize)
     plt.ylim(Erange[0], Erange[-1])
-    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
+    plt.ylabel('$E-E_\mathrm{F}$ (eV)', fontsize=label_fontsize)
 
     if overlap:
         for i, ek_pr in enumerate(eig_pr.T):
@@ -700,7 +698,15 @@ def energy_levels(
     index=False,
     color="k",
     fermi_energy=0.0,
+    label_fontsize=14,
+    ticks_fontsize=14,
+    border_linewidth=1.5,
+    linewidth=1,
     show=True,
+    save=False,
+    save_path='./',
+    save_name='tmp',
+    save_format='png,svg',
     **kwargs,
 ):
     """
@@ -709,15 +715,29 @@ def energy_levels(
     eig = H.eigh()
     plt.figure(figsize=figsize)
     # use Hermitian solver, read values
-    plt.hlines(eig - fermi_energy, 0, 1, color=color, **kwargs)
-    plt.ylim(Erange[0], Erange[-1])
-    plt.ylabel(r'$\rm E-E_F$ (eV)')
+    plt.hlines(eig - fermi_energy, 0, 1, color=color, linewidth=linewidth)
+    plt.xlim(0, 1)
+    plt.ylim(Erange[0], Erange[1])
     plt.xticks([])
+    plt.ylabel('$E-E_\mathrm{F}$ (eV)', fontsize=label_fontsize)
+    plt.tick_params(axis='y', labelsize=ticks_fontsize)
+    # set border linewidth
+    for spine in plt.gca().spines.values():
+        spine.set_linewidth(border_linewidth)
 
     if index:  # label the index of energy levels
         which = np.where(np.logical_and(eig < Erange[-1], eig > Erange[0]))[0]
         for i in which:
             plt.text(1.2, eig[i], str(i))
+    
+    if save:
+        for fmt in save_format.split(','):
+            plt.savefig(os.path.join(save_path, 
+                f'{save_name}.EnergyLevels.{Erange[0]}to{Erange[-1]}.{fmt}'),
+                dpi=300,
+                transparent=True,
+                bbox_inches='tight')
+
     if show:
         plt.show()
 
@@ -798,7 +818,7 @@ def dos(
     plt.xlim(0, sel_dos.max()*1.1)
     plt.xticks([])
     plt.plot(sel_dos, sel_E, color=color, linewidth=linewidth, **kwargs)
-    plt.ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
+    plt.ylabel('$E-E_\mathrm{F}$ (eV)', fontsize=label_fontsize)
     plt.xlabel("DOS (arb. u.)", fontsize=label_fontsize)
     plt.gca().tick_params(axis='both', which='major', labelsize=ticks_fontsize)
     # set border linewidth
@@ -978,7 +998,7 @@ def pdos(
             specify_atoms_and_orbitals)
 
     plt.figure(figsize=figsize)
-    plt.ylabel("$E - E_F$ (eV)", fontsize=label_fontsize)
+    plt.ylabel("$E-E_\mathrm{F}$ (eV)", fontsize=label_fontsize)
     plt.xlabel("PDOS (arb. u.)", fontsize=label_fontsize)
     ia = 0  # index of atoms, for line styles
     pdosmax = 0  # max of pdos
@@ -1087,7 +1107,7 @@ def pzdos(
             plt.plot(E, pDOS[i, :], label=label)
         plt.xlim(E[0], E[-1])
         plt.ylim(0, None)
-        plt.xlabel(r"$\rm E - E_F$ (eV)")
+        plt.xlabel("$E - E_\mathrm{F}$ (eV)")
         plt.ylabel(r"pz_DOS [1/eV]")
         plt.title("Project DOS on pz orbitals")
         plt.legend(loc="best", bbox_to_anchor=[1.4, 0.9])
@@ -1122,8 +1142,8 @@ def fat_bands(
     legend_position=[1.2, 0.9],
     alpha=1.0,
     fat_scale = 1,
-    tick_fontsize=14,
-    label_fontsizesize=14,
+    ticks_fontsize=14,
+    label_fontsize=14,
     legend_fontsize=12,
     linewidth=1,
     border_linewidth=1.5,
@@ -1164,8 +1184,8 @@ def fat_bands(
         legend_position: the position of the legend.
         alpha: the transparency of the fat bands.
         fat_scale: defines how fat the bands are.
-        tick_fontsize: the fontsize of the ticks.
-        label_fontsizesize: the fontsize of the labels.
+        ticks_fontsize: the fontsize of the ticks.
+        label_fontsize: the fontsize of the labels.
         legend_fontsize: the fontsize of the legend.
         save: whether to save the figure.
         save_name: the name of the saved figure.
@@ -1284,19 +1304,19 @@ def fat_bands(
             figsize=figsize_new,
             gridspec_kw={"wspace": 0},
         )
-        axes[0].set_ylabel(r"$\rm E-E_F$ (eV)", fontsize=label_fontsizesize)
+        axes[0].set_ylabel(r"$\rm E-E_F$ (eV)", fontsize=label_fontsize)
         axes[0].set_ylim(Emin, Emax)
         axes[0].set_xticks(k_tick)
-        axes[0].set_xticklabels(k_label, fontsize=label_fontsizesize)
+        axes[0].set_xticklabels(k_label, fontsize=label_fontsize)
         for i in range(na - 1):
             axes[i + 1].set_xticks([])
     else:
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot()
-        ax.set_ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsizesize)
+        ax.set_ylabel('$E-E_\mathrm{F}$ (eV)', fontsize=label_fontsize)
         ax.set_xlim(linear_k[0], linear_k[-1])
         ax.set_xticks(k_tick)
-        ax.set_xticklabels(k_label, fontsize=label_fontsizesize)
+        ax.set_xticklabels(k_label, fontsize=label_fontsize)
         ax.set_ylim(Emin, Emax)
 
     legend_dict = {}
@@ -1397,8 +1417,8 @@ def fat_bands(
     lgd = plt.legend(handles=legend_elements, bbox_to_anchor=legend_position,
                fontsize=legend_fontsize)
     lgd.get_frame().set_alpha(0)
-    plt.tick_params(axis='x', labelsize=tick_fontsize)
-    plt.tick_params(axis='y', labelsize=tick_fontsize)
+    plt.tick_params(axis='x', labelsize=ticks_fontsize)
+    plt.tick_params(axis='y', labelsize=ticks_fontsize)
     # set border line width
     for axis in ['top', 'bottom', 'left', 'right']:
         plt.gca().spines[axis].set_linewidth(border_linewidth)
@@ -1532,6 +1552,7 @@ def plot_eigst_energy(
     figsize=None,
     dotsize=10,
     mpgrid=[30, 1, 1],
+    color='#5D3A9B',
     gaussian_broadening=0.01,
     dE=0.01,
     save=False,
@@ -1586,7 +1607,7 @@ def plot_eigst_energy(
                     ax.plot(xs, ys, color='k', linewidth=1, zorder=1)
 
     # plot the eigenstate
-    ax.scatter(geom.xyz[:, 0], geom.xyz[:, 1], dotsize * lpdos)
+    ax.scatter(geom.xyz[:, 0], geom.xyz[:, 1], dotsize * lpdos, color=color)
 
     # Calculate the current axis range and the desired additional margin
     x_margin = 3
@@ -1682,7 +1703,7 @@ def ldos(H,
             ax.plot(X, Y[:, i], label='Atom {}'.format(loc), 
                     linewidth=linewidth, **kwargs)
 
-        ax.set_xlabel(r'$\rm E-E_F$ (eV)')
+        ax.set_xlabel(r'E-E_F (eV)')
         ax.set_ylabel('LDOS (arb. u.)')
         ax.set_yticks([])
         ax.set_xlim(Emin, Emax)
@@ -1817,7 +1838,7 @@ def cell_ldos(g:Geometry=None,
                  linewidth=linewidth, **kwargs)
         ax2.plot(x_bulk, y_bulk.sum(axis=1), label='Bulk cell', color='magenta',
                  linewidth=linewidth, **kwargs)
-        ax2.set_xlabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
+        ax2.set_xlabel('$E-E_\mathrm{F}$ (eV)', fontsize=label_fontsize)
         ax2.set_xlim(Erange[0], Erange[1])
         ax2.set_ylabel('LDOS (arb. u.)', fontsize=label_fontsize)
         ax2.set_ylim(0, None)
@@ -1828,7 +1849,7 @@ def cell_ldos(g:Geometry=None,
                  linewidth=linewidth, **kwargs)
         ax2.plot(y_bulk.sum(axis=1), x_bulk, label='Bulk cell', color='magenta',
                  linewidth=linewidth, **kwargs)
-        ax2.set_ylabel(r'$\rm E-E_F$ (eV)', fontsize=label_fontsize)
+        ax2.set_ylabel('$E-E_\mathrm{F}$ (eV)', fontsize=label_fontsize)
         ax2.set_ylim(Erange[0], Erange[1])
         ax2.set_xlabel('LDOS (arb. u.)', fontsize=label_fontsize)
         ax2.set_xlim(0, None)

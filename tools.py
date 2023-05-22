@@ -1,7 +1,11 @@
+from ase.data import atomic_numbers
+from ase.data import atomic_masses_iupac2016 as atomic_masses
+from itertools import combinations, permutations
 from sisl import *
 import os
 import time
-import re, regex
+import re
+import regex
 import datetime
 import functools
 import numpy as np
@@ -51,7 +55,7 @@ def read_geom_and_ham(name, path):
     g = H.geometry
     return g, H
 
-    
+
 # cast the hamiltonian copy into a function
 def copy_hamiltonian(H, shape=3):
 
@@ -154,6 +158,7 @@ def convert_formated_str_to_dict(s: str):
     return d
 
 
+
 def convert_dict_to_formatted_str(d: dict) -> str:
     """
     Convert the dictionary to a string in the following format:
@@ -165,10 +170,10 @@ def convert_dict_to_formatted_str(d: dict) -> str:
     formatted_str_list = []
 
     for key, values in d.items():
-        values_str = ', '.join(values)
-        formatted_str_list.append(f"{key}: {values_str}")
+        values_str = ','.join((value.strip() for value in values))
+        formatted_str_list.append(f"{key}:{values_str}")
 
-    formatted_str = '; '.join(formatted_str_list)
+    formatted_str = ';'.join(formatted_str_list)
 
     return formatted_str
 
@@ -181,7 +186,8 @@ def list_str(l):
     if len(l) <= 4:
         lnew = str(l)
     else:
-        lnew = "[" + ",".join((f"{l[0]},{l[1]}", "...", f"{l[-2]},{l[-1]}")) + "]"
+        lnew = "[" + ",".join((f"{l[0]},{l[1]}", "...",
+                              f"{l[-2]},{l[-1]}")) + "]"
 
     return lnew
 
@@ -191,11 +197,11 @@ def read_forces(name, path, which=None):
     Read max force from .FA file
     ouput max force, total force, and residual force in eV/Ang"""
 
-    fa = os.path.join(path,f'{name}.FA')
-    forces = np.loadtxt(fa, skiprows=1)[:,1:]
+    fa = os.path.join(path, f'{name}.FA')
+    forces = np.loadtxt(fa, skiprows=1)[:, 1:]
     maxForce = np.max(np.abs(forces))
     totForce = np.linalg.norm(np.sum(forces, axis=0))
-    resForce = np.sqrt(np.sum(np.square(forces))/forces.size) # residual
+    resForce = np.sqrt(np.sum(np.square(forces))/forces.size)  # residual
     forceDict = {'max': maxForce,
                  'total': totForce,
                  'residue': resForce}
@@ -212,7 +218,8 @@ def read_forces(name, path, which=None):
             try:
                 retlist.append(forceDict[s.strip().lower()])
             except:
-                print("Wrong keyword. Must be one of ['max', 'total', 'residue']")
+                print(
+                    "Wrong keyword. Must be one of ['max', 'total', 'residue']")
         if len(retlist) == 1:
             retlist = retlist[0]
         return retlist
@@ -225,31 +232,37 @@ def read_calc_time(name, path, which=None):
         ftime = os.path.join(path, f'{name}.times')
         with open(ftime) as f:
             lines = f.read()
-        numCores = int(re.search('Number of nodes\s*=\s*(\d+)', lines).group(1))
-        wallTime = float(re.search('Total elapsed wall-clock time.+=\s+(.+)', lines).group(1))
-        CPUtime = float(re.search('Tot:  Sum, Avge,.+=([\d\.]+)\s+', lines).group(1))
+        numCores = int(
+            re.search('Number of nodes\s*=\s*(\d+)', lines).group(1))
+        wallTime = float(
+            re.search('Total elapsed wall-clock time.+=\s+(.+)', lines).group(1))
+        CPUtime = float(
+            re.search('Tot:  Sum, Avge,.+=([\d\.]+)\s+', lines).group(1))
     except:
-        fout = glob(os.path.join(path,f'{name}*.out'))[0]
+        fout = glob(os.path.join(path, f'{name}*.out'))[0]
         with open(fout) as f:
             lines = f.read()
-        tStart = re.search('Start of run:\s*(\d+\-\w+\-\d{4}\s*\d+:\d+:\d+)\n', lines).group(1)
-        tEnd = re.search('End of run:\s*(\d+\-\w+\-\d{4}\s*\d+:\d+:\d+)\n', lines).group(1)
+        tStart = re.search(
+            'Start of run:\s*(\d+\-\w+\-\d{4}\s*\d+:\d+:\d+)\n', lines).group(1)
+        tEnd = re.search(
+            'End of run:\s*(\d+\-\w+\-\d{4}\s*\d+:\d+:\d+)\n', lines).group(1)
         tStart = datetime.datetime.strptime(tStart, '%d-%b-%Y %H:%M:%S')
         tEnd = datetime.datetime.strptime(tEnd, '%d-%b-%Y %H:%M:%S')
         wallTime = (tEnd - tStart).total_seconds()
         CPUtime = wallTime
-        numCores = re.search('Running on\s*(\d+)\s+nodes in parallel', lines).group(1)
+        numCores = re.search(
+            'Running on\s*(\d+)\s+nodes in parallel', lines).group(1)
     if not which:
         wallTime = str(datetime.timedelta(seconds=wallTime))
         CPUtime = str(datetime.timedelta(seconds=CPUtime))
         print(f"Number of cores (processors): {numCores}")
         print(f"Total elapsed wall-clock time: {wallTime}")
         print(f"Total CPU time: {CPUtime}")
-    elif which.lower()=='cores':
+    elif which.lower() == 'cores':
         return numCores
-    elif which.lower()=='walltime':
+    elif which.lower() == 'walltime':
         return wallTime
-    elif which.lower()=='cputime':
+    elif which.lower() == 'cputime':
         return CPUtime
     elif which.lower() == 'all':
         return numCores, wallTime, CPUtime
@@ -258,17 +271,13 @@ def read_calc_time(name, path, which=None):
             'cputime', 'all']")
 
 
-
-
-
-
 def read_final_energy(name, path="./opt", which=None):
     outfile = name + ".out"
     filepath = os.path.join(path, outfile)
     with open(filepath) as fout:
         lines = fout.read()
-    ergStr = regex.search('(?<=siesta: Final energy \(eV\):\n)(.+=.+\n)+', 
-                            lines).group(0)
+    ergStr = regex.search('(?<=siesta: Final energy \(eV\):\n)(.+=.+\n)+',
+                          lines).group(0)
     rawList = regex.findall('siesta: .+=.+', ergStr)
     ergDict = dict()
     for s in rawList:
@@ -293,16 +302,13 @@ def read_final_energy(name, path="./opt", which=None):
         print("Fermi energy: {} eV".format(ergDict["fermi"]))
 
 
-from itertools import combinations, permutations
-
 def read_bond_length(name, path):
-
     "Read C-C and C-H bond length"
     g = get_sile(os.path.join(path, f'{name}.XV')).read_geometry()
 
     C_list = []
     H_list = []
-    for i,a,_ in g.iter_species():
+    for i, a, _ in g.iter_species():
         if a.Z == 6:
             C_list.append(i)
         elif a.Z == 1:
@@ -317,12 +323,11 @@ def read_bond_length(name, path):
     CC_bond = sum(CC_bonds)/len(CC_bonds)
     for c in C_list:
         for h in H_list:
-            r = g.rij(c,h)
+            r = g.rij(c, h)
             if r < 1.2:
                 CH_bonds.append(r)
     CH_bond = sum(CH_bonds)/len(CH_bonds)
     return CC_bond, CH_bond
-
 
 
 def read_interpolated_ham(name, path):
@@ -332,7 +337,6 @@ def read_interpolated_ham(name, path):
     win = get_sile(os.path.join(path, f'{name}.win'))
     Hint = win.read_hamiltonian()
     return Hint
-
 
 
 def modify_wann_xsf_file(filename, translation_vector):
@@ -377,19 +381,21 @@ def modify_wann_xsf_file(filename, translation_vector):
         # Write lines before BEGIN_DATAGRID_3D
         for line in lines_before_datagrid_3d:
             file.write(line)
-        
+
         # Write BEGIN_DATAGRID_3D
         file.write("BEGIN_DATAGRID_3D\n")
-        
+
         # Write grid dimensions
         file.write("\t"+"\t ".join(str(x) for x in grid_dimensions) + "\n")
-        
+
         # Write grid origin
-        file.write("\t"+"\t ".join("{:.6f}".format(x) for x in grid_origin) + "\n")
-            
+        file.write("\t"+"\t ".join("{:.6f}".format(x)
+                   for x in grid_origin) + "\n")
+
         # Write spanning vectors
         for vector in spanning_vectors:
-            file.write("\t"+"\t ".join("{:.6f}".format(x) for x in vector) + "\n")
+            file.write("\t"+"\t ".join("{:.6f}".format(x)
+                       for x in vector) + "\n")
 
     # Write grid data
         for i, value in enumerate(grid_data):
@@ -400,7 +406,6 @@ def modify_wann_xsf_file(filename, translation_vector):
         # Write END_DATAGRID_3D
         file.write("END_DATAGRID_3D\n")
         file.write("END_BLOCK_DATAGRID_3D\n")
-
 
 
 def modify_wann_centres_file(path, n, translation_vector):
@@ -428,7 +433,8 @@ def modify_wann_centres_file(path, n, translation_vector):
             if x_count == n:
                 parts = line.split()
                 coords = [float(x) for x in parts[1:]]
-                updated_coords = [coords[j] + translation_vector[j] for j in range(3)]
+                updated_coords = [coords[j] + translation_vector[j]
+                                  for j in range(3)]
                 lines[i] = "{}\t\t\t{}\n".format(parts[0], '\t\t'.join(
                     f'{coord:.8f}' for coord in updated_coords))
                 break
@@ -438,20 +444,22 @@ def modify_wann_centres_file(path, n, translation_vector):
         file.writelines(lines)
 
 
-
 def read_orca_final_energy(name, path):
     last_energy = None
 
-    with open(os.path.join(path,f'{name}.out'), 'r') as file:
+    with open(os.path.join(path, f'{name}.out'), 'r') as file:
         for line in file:
             if "FINAL SINGLE POINT ENERGY" in line:
                 # Extract the float value
                 last_energy = line.split()[-1]
 
     last_energy = float(last_energy.split()[-1])
-    last_energy *= 27.211386245988 # convert from Hartree to eV
+    last_energy *= 27.211386245988  # convert from Hartree to eV
     if last_energy is not None:
         return last_energy
     else:
         print("No 'FINAL SINGLE POINT ENERGY' line found in the file.")
 
+
+def get_masses(elements):
+    return np.array([atomic_masses[atomic_numbers[e]] for e in elements])
